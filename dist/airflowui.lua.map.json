@@ -1,0 +1,16 @@
+{
+  "artifact": "airflowui",
+  "bundle_sha256": "f1162f15fa93794f3fff81c62499f0a16c1d7ed7f49a0dc7b97dc48b71af1e0d",
+  "bundle_size": 36125,
+  "modules": {
+    "airflowui/main.lua": "5f29c19a3be19c2ca50f7c3623ff11af1f568610c655c9d431d946e7abcf8984",
+    "airflowui/tabs/combat.lua": "928b5a6cc894720b3d50098dbeb6ad8ed455e927f18b8ede2ed82a29fc6e6e83",
+    "airflowui/tabs/misc.lua": "cb9b48843c2ad9be92dc07bc7212700be08765a327fa6fb3f0988e9197f5f921",
+    "airflowui/tabs/players.lua": "ca920d6b1687a1456e64b3d2dc9c8fcc94443b729d84c865544c3fb3a73b2a6a",
+    "airflowui/tabs/settings.lua": "dbc8c36c112f65adcc935cb644c738acd118a780947e8b3738ed1e289cecfba5",
+    "airflowui/tabs/utility.lua": "4e1600bc274b1f445682d0697d88829588b96b86befea688021ae86864f957ba",
+    "airflowui/tabs/visuals.lua": "539396ce3b8a1f54e73af650a03a498ea8643a858f074395e8bfbca93ef9cd9f"
+  },
+  "obfuscated": false,
+  "tabs": 6
+}

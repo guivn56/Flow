@@ -1,0 +1,20 @@
+# Build
+build/
+out/
+
+# A fonte em claro do bundle nao e versionada (o bundle e o artefacto)
+dist/*.source.lua
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
