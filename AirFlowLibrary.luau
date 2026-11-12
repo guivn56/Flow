@@ -1334,7 +1334,7 @@ end
 function Tab:Paragraph(opts)
     opts = normalize(opts, { Title = "Name" })
     local frame = card(self, "Frame", 0, opts)
-    frame.AutomaticSize = Enum.AutomaticSize.Y
+    frame.Size = UDim2.new(1, 0, 0, 250)
     if metricsOf(self).Compact then
         padding(frame, 14, 14, 6, 8)
     else
@@ -3599,7 +3599,7 @@ function Tab:OrderList(opts)
     local arrows = opts.Arrows ~= false
 
     local frame = card(self, "Frame", 0, opts)
-    frame.AutomaticSize = Enum.AutomaticSize.Y
+    frame.Size = UDim2.new(1, 0, 0, 250)
     if compact then
         padding(frame, 14, 14, 6, 8)
     else
@@ -10177,7 +10177,7 @@ function Tab:StatusList(opts)
     local window = self.Window
     local maxRows = math.max(math.floor(tonumber(opts.MaxRows) or 5), 1)
     local frame = card(self, "Frame", 0, opts)
-    frame.AutomaticSize = Enum.AutomaticSize.Y
+    frame.Size = UDim2.new(1, 0, 0, 250)
     if compact then
         padding(frame, 14, 14, 6, 8)
     else
