@@ -19,7 +19,9 @@ AirflowUI/
     settings.lua    aba SETTINGS
 ```
 
-A biblioteca vive em `/sdcard/Download/AirFlowLibrary.luau`.
+A biblioteca é buscada na internet com `game:HttpGet`, a partir da RAW do
+GitHub (`https://raw.githubusercontent.com/guivn56/Flow/main/AirFlowLibrary.luau`).
+Se a rede falhar, há fallback para `/sdcard/Download/AirFlowLibrary.luau`.
 
 ## Como uma aba e feita
 
@@ -72,8 +74,9 @@ O `ctx` leva quatro coisas:
 
 ## Correr
 
-- Menu completo: cola o `main.lua` no executor (ele carrega a biblioteca
-  e as abas de `/sdcard/Delta/Workspace/AirflowUI/tabs`).
+- Menu completo: cola o `main.lua` no executor (ele busca a biblioteca no
+  GitHub com `game:HttpGet` e as abas de
+  `/sdcard/Delta/Workspace/AirflowUI/tabs`).
 - So a aba MISC: cola o `teste_misc.lua`.
 
 ## Validar sem o jogo

@@ -17,13 +17,18 @@ https://raw.githubusercontent.com/guivn56/Flow/main/dist/airflowui.lua
 ```
 
 Um ficheiro, sem `require`, sem a pasta `tabs/` no telemóvel: as 6 abas
-vao embutidas. A biblioteca continua a ser lida de
-`/sdcard/Download/AirFlowLibrary.luau`.
+vao embutidas. A biblioteca é buscada na internet com `game:HttpGet`
+(da RAW do GitHub), por isso já não precisa do ficheiro
+`/sdcard/Download/AirFlowLibrary.luau` no telemóvel:
+
+```lua
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn56/Flow/main/AirFlowLibrary.luau"))()
+```
 
 | | |
 |---|---|
-| tamanho | 36 125 bytes |
-| sha256 | `f1162f15fa93794f3fff81c62499f0a16c1d7ed7f49a0dc7b97dc48b71af1e0d` |
+| tamanho | 36 674 bytes |
+| sha256 | `261539a6440a28b902a9588f1a21d853b97319faae37c2520fbca6919f3e43f0` |
 
 ---
 

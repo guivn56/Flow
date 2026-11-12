@@ -16,7 +16,7 @@
 --   CreateToggle / CreateInput / CreateButton -> column:Toggle / :Input / :Button
 --
 -- Executar no Delta. Se a biblioteca ainda nao estiver no ambiente, este
--- ficheiro carrega-a sozinho a partir do caminho em LIBRARY_PATH.
+-- ficheiro busca-a no GitHub com game:HttpGet.
 -- =====================================================================
 
 local ROOT = "/sdcard/Delta/Workspace/AirflowUI"
@@ -33,19 +33,29 @@ local function loadLibrary()
 	if env and type(env.Library) == "table" then
 		return env.Library
 	end
+	-- Biblioteca veio do GitHub: funciona no Delta/mobile, onde nao ha
+	-- ficheiro local da biblioteca.
+	local ok, lib = pcall(function()
+		local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn56/Flow/main/AirFlowLibrary.luau"))()
+		return Library
+	end)
+	if ok and type(lib) == "table" then
+		return lib
+	end
+	-- Rede fora: tenta o ficheiro local (executores de PC).
 	if readfile and loadstring then
-		local ok, lib = pcall(function()
+		local okFile, libFile = pcall(function()
 			return loadstring(readfile(LIBRARY_PATH))()
 		end)
-		if ok and type(lib) == "table" then
-			return lib
+		if okFile and type(libFile) == "table" then
+			return libFile
 		end
 	end
 	return nil
 end
 
 local AirFlow = loadLibrary()
-assert(AirFlow, "[Airflow] nao foi possivel carregar " .. LIBRARY_PATH)
+assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .. LIBRARY_PATH .. ")")
 
 -- ---------------------------------------------------------------------
 -- 2. TEMA ROXO
