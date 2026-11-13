@@ -1,9 +1,9 @@
 {
   "artifact": "airflowui",
-  "bundle_sha256": "b3e578f996dafa113b83744430131a8ca86e0581313913da84c5f1d76ba99618",
-  "bundle_size": 39185,
+  "bundle_sha256": "3914a7b86e3ee909b4162cfc738f0af3cc1e12bd90eee6b60dc874e6df9ce960",
+  "bundle_size": 39670,
   "modules": {
-    "airflowui/main.lua": "e1ff384b14af051e0b0a552b2380f725f8d6a562a8c88c3ef94eea7dbd7927ba",
+    "airflowui/main.lua": "2ee1f31fc143e692d6d7c2cdc9ce725fe412c627ec693d6117e31d9b5220195f",
     "airflowui/tabs/combat.lua": "17d1778cc050b848d451caa59ed7818926aa37b42fa7b63576c11b3313bf9b69",
     "airflowui/tabs/misc.lua": "cb9b48843c2ad9be92dc07bc7212700be08765a327fa6fb3f0988e9197f5f921",
     "airflowui/tabs/players.lua": "ca920d6b1687a1456e64b3d2dc9c8fcc94443b729d84c865544c3fb3a73b2a6a",

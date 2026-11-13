@@ -66,18 +66,16 @@ assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .
 -- os tracos tambem sao roxos, para o menu ficar com o mesmo ar do
 -- BBC Hub.
 -- ---------------------------------------------------------------------
-local PURPLE_THEME = {
-	Accent = Color3.fromRGB(170, 80, 255),
-	AccentDark = Color3.fromRGB(16, 7, 26),
-	Background = Color3.fromRGB(10, 8, 15),
-	Surface = Color3.fromRGB(16, 14, 22),
-	Surface2 = Color3.fromRGB(20, 18, 26),
-	Surface3 = Color3.fromRGB(38, 30, 56),
-	Card = Color3.fromRGB(25, 25, 30),
-	Stroke = Color3.fromRGB(44, 36, 62),
-	StrokeHover = Color3.fromRGB(96, 72, 150),
-	Text = Color3.fromRGB(236, 232, 245),
-	Muted = Color3.fromRGB(138, 130, 160),
+local DARK_THEME = {
+    Accent = Color3.fromRGB(170, 80, 255),
+    AccentDark = Color3.fromRGB(90, 40, 160),
+    Background = Color3.fromRGB(15, 15, 15),
+    Surface = Color3.fromRGB(22, 22, 22),
+    Surface2 = Color3.fromRGB(30, 30, 30),
+    Surface3 = Color3.fromRGB(40, 40, 40),
+    Stroke = Color3.fromRGB(50, 50, 50),
+    Text = Color3.fromRGB(255, 255, 255),
+    Muted = Color3.fromRGB(160, 160, 160)
 }
 
 AirFlow:SetTheme(PURPLE_THEME, true)
@@ -1539,3 +1537,20 @@ for _, entry in ipairs(TABS) do
 end
 
 print("[Airflow] pronto: " .. tostring(loaded) .. "/" .. tostring(#TABS) .. " abas")
+
+-- Fundo Hexagonal
+task.spawn(function()
+    task.wait(1)
+    if Window and Window.Main then
+        local HexBg = Instance.new("ImageLabel")
+        HexBg.Parent = Window.Main
+        HexBg.Size = UDim2.new(1, 0, 1, 0)
+        HexBg.BackgroundTransparency = 1
+        HexBg.Image = "rbxassetid://12629542321"
+        HexBg.ScaleType = Enum.ScaleType.Tile
+        HexBg.TileSize = UDim2.new(0, 50, 0, 50)
+        HexBg.ImageColor3 = Color3.fromRGB(20, 20, 20)
+        HexBg.ImageTransparency = 0.8
+        HexBg.ZIndex = -1
+    end
+end)
