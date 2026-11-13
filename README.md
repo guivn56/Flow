@@ -27,8 +27,8 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn
 
 | | |
 |---|---|
-| tamanho | 38 010 bytes |
-| sha256 | `b660b997592d5e007c356453613320ed26746a8d1911231f517d41335beaf928` |
+| tamanho | 39 185 bytes |
+| sha256 | `b3e578f996dafa113b83744430131a8ca86e0581313913da84c5f1d76ba99618` |
 
 ---
 
@@ -50,6 +50,61 @@ window:CreateWatermark({ Name = "Airflow" })   -- marca + relogio no topo da tel
 ```
 
 O `main.lua` cria a marca e o tema roxo completo (nao so a cor de destaque).
+
+---
+
+## O menu expansivel (sub menu do toggle)
+
+O icone **"☰"** do lado esquerdo de um toggle pode ser um **botao**: ele
+abre e fecha um **painel por baixo do toggle**, com as opcoes extras
+dentro. E o mesmo para as colunas do BBC Hub: o painel e um cartao como
+os outros, entalado, e os controlos de dentro ficam cartoes pequenos.
+
+```lua
+leftColumn:Toggle({
+	Name = "Silent Aim",
+	Flag = "CombatSilentAim",
+	Callback = function(value)
+		Settings.combat_silent_aim = value
+	end,
+	SubElements = {
+		{
+			Type = "Slider",
+			Name = "Hit Chance",
+			Min = 0,
+			Max = 100,
+			Step = 1,
+			Default = 50,
+			Suffix = " %",
+			Callback = function(value)
+				print("Slider alterado")
+				-- [LOGICA AQUI]
+			end,
+		},
+		{
+			Type = "Dropdown",
+			Name = "Target Part",
+			Options = { "Head", "Torso", "Nearest" },
+			Default = "Head",
+			Callback = function(value)
+				print("Dropdown alterado")
+				-- [LOGICA AQUI]
+			end,
+		},
+	},
+})
+```
+
+| | |
+|---|---|
+| **`SubElements`** | lista de specs. Cada spec e um `{ Type = "...", ... }` com as mesmas opcoes do control (o `Type` e `Slider`, `Dropdown`, `Toggle`, `Button`, `Input`, `Keybind`, `Label` ou `Paragraph`). Tambem aceita a forma mapa: `{ Slider = { { ... } }, Dropdown = { { ... } } }`. |
+| **O icone** | com `SubElements`, o "☰" vira o botao que abre o painel (o clique no cartao continua a ligar/desligar o toggle). Fica com a cor do destaque enquanto o painel esta aberto. |
+| **O painel** | abre como uma gaveta (0.26 s) por baixo do toggle, dentro da mesma coluna. Os controlos de dentro sao cartoes normais, com os mesmos flags e a mesma `Settings`. |
+| **A rolagem** | o `CanvasSize` do `ScrollingFrame` da aba segue o conteudo: quando o painel abre ou fecha, a coluna cresce ou encolhe e a rolagem no telemóvel continua a apanhar o ultimo cartao. |
+| **Fechar** | dobrar a coluna, esconder o toggle ou fechar o painel fecha tambem o que estiver aberto dentro dele (um dropdown, por exemplo). |
+
+Na aba **COMBAT** ha dois exemplos: o **Silent Aim** (com `Hit Chance` e
+`Target Part`) e o **Aimbot** (com `Smoothness` e `Prediction`).
 
 ---
 

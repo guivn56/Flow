@@ -72,6 +72,61 @@ O `ctx` leva quatro coisas:
 5. **Uma aba que falhe nao leva o menu abaixo**: o `main.lua` carrega
    cada aba num `pcall` e avisa no console.
 
+## Sub menu de um toggle
+
+Um toggle pode levar as opcoes extras dentro de um painel que abre por
+baixo dele: o icone "☰" da esquerda passa a ser o botao que abre e fecha
+o painel (o clique no cartao continua a ligar/desligar o toggle).
+
+```lua
+	left:Toggle({
+		Name = "Silent Aim",
+		Flag = "CombatSilentAim",
+		Callback = function(value)
+			Settings.combat_silent_aim = value
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Hit Chance",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Slider alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Dropdown",
+				Name = "Target Part",
+				Options = { "Head", "Torso", "Nearest" },
+				Default = "Head",
+				Callback = function(value)
+					print("Dropdown alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+		},
+	})
+```
+
+| `Type` | control que aparece dentro do painel |
+|---|---|
+| `Slider` | `Min`, `Max`, `Step`, `Default`, `Suffix` |
+| `Dropdown` | `Options`, `Default` |
+| `Toggle` | `Default` (ligado/desligado) |
+| `Button`, `Input`, `Keybind`, `Label`, `Paragraph` | as opcoes do control |
+
+Cada spec aceita as mesmas opcoes do control normal (`Flag`, `Callback`,
+`Desc`, ...). O painel vive na mesma coluna do toggle, por isso a coluna
+cresce com ele e a rolagem no telemóvel continua a funcionar.
+
+Na aba COMBAT ha dois exemplos: o **Silent Aim** (`Hit Chance`,
+`Target Part`) e o **Aimbot** (`Smoothness`, `Prediction`).
+
 ## Correr
 
 - Menu completo: cola o `main.lua` no executor (ele busca a biblioteca no

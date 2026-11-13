@@ -1603,6 +1603,58 @@ function Tab:Button(opts)
     }, button, "Button")
 end
 
+-- The controls a toggle can carry in its sub menu. The name matches the
+-- methods of the Tab table, so the panel is built with the same code as
+-- any other column.
+local SUB_TYPES = {
+    Slider = true,
+    Dropdown = true,
+    Toggle = true,
+    Button = true,
+    Input = true,
+    Keybind = true,
+    Label = true,
+    Paragraph = true,
+}
+
+-- SubElements takes a list of specs ({ Type = "Slider", Name = "..." })
+-- or a map by type ({ Slider = { ... }, Dropdown = { ... } }).
+local function subSpecs(list)
+    local specs = {}
+    for _, item in ipairs(list) do
+        if type(item) == "table" then
+            table.insert(specs, item)
+        end
+    end
+    if #specs > 0 then
+        return specs
+    end
+    for kind, value in pairs(list) do
+        if SUB_TYPES[kind] and type(value) == "table" then
+            if type(value[1]) == "table" then
+                for _, item in ipairs(value) do
+                    if type(item) == "table" then
+                        local spec = {}
+                        for key, entry in pairs(item) do
+                            spec[key] = entry
+                        end
+                        spec.Type = spec.Type or kind
+                        table.insert(specs, spec)
+                    end
+                end
+            else
+                local spec = {}
+                for key, entry in pairs(value) do
+                    spec[key] = entry
+                end
+                spec.Type = spec.Type or kind
+                table.insert(specs, spec)
+            end
+        end
+    end
+    return specs
+end
+
 function Tab:Toggle(opts)
     local button, buttonStroke, title, descLabel, _height
     opts, button, buttonStroke, _height, title, descLabel = beginElement(self, opts, { Title = "Name", Description = "Desc", CurrentValue = "Default", Value = "Default" }, "TextButton", 56, "Toggle")
@@ -1610,12 +1662,15 @@ function Tab:Toggle(opts)
     -- The toggle stands on its own: its own panel, its own border and its
     -- own mark on the left of the name.
     Library._cardLook(button, buttonStroke)
-    local paintBadge
-    if opts.Icon ~= false then
-        local _, paint = Library._markBadge(button, opts.Icon)
-        paintBadge = paint
+    local specs = type(opts.SubElements) == "table" and subSpecs(opts.SubElements) or {}
+    local paintBadge, badge
+    -- A toggle with a sub menu always keeps the mark: it is the button that
+    -- folds the panel.
+    if opts.Icon ~= false or #specs > 0 then
+        badge, paintBadge = Library._markBadge(button, opts.Icon)
         Library._insetLabels(title, descLabel, 34, 56)
     end
+    local subOpen = false
 
     local pill = create("Frame", {
         AnchorPoint = Vector2.new(1, 0.5),
@@ -1655,7 +1710,9 @@ function Tab:Toggle(opts)
         local on = self_.Value
         local duration = animate and 0.25 or 0
         if paintBadge then
-            paintBadge(on and Theme.Accent or Theme.Muted)
+            -- While the panel is open the mark is the button that closes it,
+            -- so it keeps the accent even with the toggle off.
+            paintBadge(subOpen and Theme.AccentDark or (on and Theme.Accent or Theme.Muted))
         end
         tween(pill, { BackgroundColor3 = on and Theme.Accent or Theme.Surface3 }, duration)
         tween(pillGlow, { ImageTransparency = on and 0.75 or 1 }, duration)
@@ -1693,11 +1750,264 @@ function Tab:Toggle(opts)
     end
 
     render(false)
+
+    -- -----------------------------------------------------------------
+    -- SUB MENU: the panel that unfolds under the toggle
+    -- -----------------------------------------------------------------
+    local window = self.Window
+    local subFrame, subContent, subButton, subGroup
+    local subAnimating = false
+    local subGrown = false
+
+    if #specs > 0 then
+        -- The panel lives in the same list as the toggle, so it takes its
+        -- place right below it and the column grows with it.
+        subFrame = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 0),
+            BackgroundColor3 = Theme.Surface2,
+            BackgroundTransparency = 0.45,
+            BorderSizePixel = 0,
+            ClipsDescendants = true,
+            Visible = false,
+            LayoutOrder = button.LayoutOrder + 0.5,
+            Parent = self.List,
+        })
+        subFrame:SetAttribute("NoDrag", true)
+        corner(subFrame, UDim.new(0, 10))
+        stroke(subFrame, Theme.Stroke, 0.55)
+        -- The controls live in a frame of their own: the panel takes the
+        -- height of this one and opens like a drawer.
+        subContent = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+            Parent = subFrame,
+        })
+        Library._space(padding(subContent, 10, 10, 8, 10), { 10, 10, 8, 10 })
+        Library._space(create("UIListLayout", {
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 6),
+            Parent = subContent,
+        }), 6)
+
+        -- The extra settings are built like any other control, but they live
+        -- inside the panel instead of the column.
+        subGroup = setmetatable({
+            Name = opts.Name or "SubMenu",
+            Window = window,
+            Parent = self,
+            List = subContent,
+            Frame = subFrame,
+            _frame = subFrame,
+            _order = 0,
+            _groupbox = true,
+            _metrics = metricsOf(self),
+            _items = {},
+        }, Tab)
+        for _, spec in ipairs(specs) do
+            local kind = spec.Type or spec.Kind
+            if type(kind) == "string" and SUB_TYPES[kind] and type(Tab[kind]) == "function" then
+                local args = {}
+                for key, value in pairs(spec) do
+                    if key ~= "Type" and key ~= "Kind" then
+                        args[key] = value
+                    end
+                end
+                args.Name = args.Name or kind
+                local ok, err = pcall(Tab[kind], subGroup, args)
+                if not ok then
+                    warn("[AirFlow] sub menu: " .. tostring(kind) .. " -> " .. tostring(err))
+                end
+            end
+        end
+
+        -- The mark on the left becomes the button that folds the panel.
+        subButton = create("TextButton", {
+            Size = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 3,
+            Parent = badge,
+        })
+    end
+
+    local function subScale()
+        return (window and window.Scale and window.Scale.Scale) or 1
+    end
+
+    -- The canvas of the list follows the content: the panel changes the
+    -- height of the column, and without this the scroll on the phone stops
+    -- before the last card.
+    local function refreshCanvas()
+        local scroller = subFrame and subFrame:FindFirstAncestorWhichIsA("ScrollingFrame")
+        if not scroller then
+            return
+        end
+        local layout = scroller:FindFirstChildWhichIsA("UIListLayout")
+        if not layout then
+            return
+        end
+        local canvas = layout.AbsoluteContentSize.Y / subScale() + 4
+        if math.abs(scroller.CanvasSize.Y.Offset - canvas) > 0.5 then
+            scroller.CanvasSize = UDim2.fromOffset(0, canvas)
+        end
+    end
+
+    local function setSubHeight(value)
+        subFrame.Size = UDim2.new(1, 0, 0, math.max(value, 0))
+    end
+
+    local function paintSub(open)
+        if badge then
+            tween(badge, {
+                BackgroundColor3 = open and Theme.Accent or Theme.Surface3,
+                BackgroundTransparency = open and 0 or 0.5,
+            }, 0.2)
+        end
+        if paintBadge then
+            paintBadge(open and Theme.AccentDark or Theme.Muted)
+        end
+    end
+
+    -- The panel opens like a drawer: it grows from zero to the height of
+    -- the controls inside it.
+    local function grow()
+        if not subOpen or subGrown or not subFrame then
+            return
+        end
+        local target = subContent.AbsoluteSize.Y / subScale()
+        if target <= 0 then
+            return
+        end
+        subGrown = true
+        tween(subFrame, { Size = UDim2.new(1, 0, 0, target) }, 0.26, Enum.EasingStyle.Quint)
+        task.delay(0.28, function()
+            if not subOpen then
+                return
+            end
+            subAnimating = false
+            setSubHeight(subContent.AbsoluteSize.Y / subScale())
+            refreshCanvas()
+        end)
+    end
+
+    local function openSub()
+        if subOpen or not subFrame then
+            return
+        end
+        subOpen = true
+        subAnimating = true
+        subGrown = false
+        subFrame.Visible = true
+        setSubHeight(0)
+        paintSub(true)
+        -- The panel is only measured once it is on screen, so the opening
+        -- waits for the first layout pass.
+        task.defer(grow)
+        task.delay(0.05, grow)
+        task.delay(0.15, grow)
+        refreshCanvas()
+    end
+
+    local function closeSub()
+        if not subOpen or not subFrame then
+            return
+        end
+        subOpen = false
+        subAnimating = true
+        subGrown = false
+        -- Anything open inside the panel closes with it.
+        for _, element in ipairs(subGroup._items) do
+            if element._onHide then
+                element._onHide()
+            end
+            if element.Open and type(element.SetOpen) == "function" then
+                element:SetOpen(false)
+            end
+        end
+        paintSub(false)
+        tween(subFrame, { Size = UDim2.new(1, 0, 0, 0) }, 0.22, Enum.EasingStyle.Quint)
+        task.delay(0.24, function()
+            if subOpen then
+                return
+            end
+            subAnimating = false
+            subFrame.Visible = false
+            refreshCanvas()
+        end)
+        refreshCanvas()
+    end
+
+    if subFrame then
+        -- A control that changes its size inside the panel keeps the panel
+        -- in step with it.
+        subContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            if not subOpen then
+                return
+            end
+            if subAnimating then
+                grow()
+            else
+                setSubHeight(subContent.AbsoluteSize.Y / subScale())
+                refreshCanvas()
+            end
+        end)
+    end
+
+    -- The click on the mark belongs to the panel, not to the toggle.
+    local suppressClick = false
+    if subButton then
+        subButton.MouseButton1Click:Connect(function()
+            suppressClick = true
+            task.defer(function()
+                suppressClick = false
+            end)
+            if subOpen then
+                closeSub()
+            else
+                openSub()
+            end
+        end)
+        subButton.MouseEnter:Connect(function()
+            if not subOpen then
+                tween(badge, { BackgroundTransparency = 0.25 }, 0.15)
+            end
+        end)
+        subButton.MouseLeave:Connect(function()
+            if not subOpen then
+                tween(badge, { BackgroundTransparency = 0.5 }, 0.2)
+            end
+        end)
+    end
+
     button.MouseButton1Click:Connect(function()
+        if suppressClick then
+            suppressClick = false
+            return
+        end
         fromClick = true
         self_:Set(not self_.Value)
         fromClick = false
     end)
+
+    -- Folding the column (or hiding the toggle) folds the panel with it.
+    function self_:_onHide()
+        if subOpen then
+            closeSub()
+        end
+    end
+
+    function self_:SetSubOpen(open)
+        if not subFrame then
+            return
+        end
+        if open then
+            openSub()
+        else
+            closeSub()
+        end
+    end
 
     local handle = finishElement(self, opts, self_, button, "Toggle")
     if self_.Value then
@@ -8327,11 +8637,25 @@ local function buildContainer(owner, parent, top, emptyIcon, emptyText)
         Parent = parent,
     })
     Library._space(padding(list, 24, 24, 2, 24), { 24, 24, 2, 24 })
-    Library._space(create("UIListLayout", {
+    local listLayout = Library._space(create("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 8),
         Parent = list,
     }), 8)
+    -- The canvas is sized by hand: AutomaticCanvasSize under the window's
+    -- UIScale sometimes leaves the canvas short, so the list would not
+    -- scroll. It follows the content, so a panel that unfolds (the sub
+    -- menu of a toggle) keeps the scroll working on the phone.
+    local function refreshCanvas()
+        local window = owner.Window
+        local scale = (window and window.Scale and window.Scale.Scale) or 1
+        local canvas = listLayout.AbsoluteContentSize.Y / scale + 4
+        if math.abs(list.CanvasSize.Y.Offset - canvas) > 0.5 then
+            list.CanvasSize = UDim2.fromOffset(0, canvas)
+        end
+    end
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCanvas)
+    owner._refreshCanvas = refreshCanvas
     owner.List = list
     owner._items = {}
     owner._groupboxes = {}

@@ -192,12 +192,42 @@ return function(ctx)
 	leftColumn:Section("AIM")
 
 	-- [LOGICA DO SILENT AIM AQUI]
+	--
+	-- O toggle traz um SUB MENU: o icone da esquerda (o "☰") vira um
+	-- botao que abre uma caixa por baixo do toggle, com as opcoes extras.
+	-- O painel cresce com a coluna, por isso a rolagem no telemóvel
+	-- continua a funcionar.
 	leftColumn:Toggle({
 		Name = "Silent Aim",
 		Flag = "CombatSilentAim",
 		Callback = function(value)
 			Settings.combat_silent_aim = value
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Hit Chance",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Slider alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Dropdown",
+				Name = "Target Part",
+				Options = { "Head", "Torso", "Nearest" },
+				Default = "Head",
+				Callback = function(value)
+					print("Dropdown alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- [LOGICA DO FOV DA MIRA AQUI]
@@ -214,27 +244,44 @@ return function(ctx)
 		end,
 	})
 
-	-- [LOGICA DO SMOOTHING AQUI]
-	leftColumn:Slider({
-		Name = "Smoothing",
-		Flag = "CombatSmoothing",
-		Min = 0,
-		Max = 100,
-		Step = 1,
-		Default = 30,
-		Suffix = " %",
-		Callback = function(value)
-			Settings.combat_smoothing = value
-		end,
-	})
-
-	-- [LOGICA DA PREDICTION AQUI]
+	-- [LOGICA DO AIMBOT AQUI]
+	--
+	-- Segundo exemplo de sub menu: o Smoothness e o Prediction deixaram de
+	-- ser cartoes soltos na coluna e passaram para dentro do painel do
+	-- Aimbot (os flags continuam os mesmos).
 	leftColumn:Toggle({
-		Name = "Prediction",
-		Flag = "CombatPrediction",
+		Name = "Aimbot",
+		Flag = "CombatAimbot",
 		Callback = function(value)
-			Settings.combat_prediction = value
+			Settings.combat_aimbot = value
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Smoothness",
+				Flag = "CombatSmoothing",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 30,
+				Suffix = " %",
+				Callback = function(value)
+					Settings.combat_smoothing = value
+					print("Slider alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Prediction",
+				Flag = "CombatPrediction",
+				Callback = function(value)
+					Settings.combat_prediction = value
+					print("Toggle alterado")
+					-- [LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- [LOGICA DO AUTO SHOOT AQUI]
