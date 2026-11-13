@@ -58,7 +58,7 @@ O `ctx` leva quatro coisas:
 | `Library` | a biblioteca AirFlow (tema, cores) |
 | `window` | a janela onde criar o tab |
 | `Settings` | a tabela de estado partilhada por todas as abas |
-| `plainColumn` | esconde a barra do groupbox (as colunas do BBC Hub nao a usam) |
+| `plainColumn` | esconde a barra do groupbox e o painel da coluna (as colunas do BBC Hub nao os usam: cada control e um cartao) |
 
 ## Regras
 
@@ -78,6 +78,19 @@ O `ctx` leva quatro coisas:
   GitHub com `game:HttpGet` e as abas de
   `/sdcard/Delta/Workspace/AirflowUI/tabs`).
 - So a aba MISC: cola o `teste_misc.lua`.
+
+## Visual
+
+O `main.lua` monta:
+
+1. **Tema roxo completo** (nao so a cor de destaque): paineis, cartoes e
+   tracos.
+2. **Janela** `AirflowUI` (760x520), que se ajusta ao ecra sozinha.
+3. **Watermark** no topo central da tela: o nome do hub e o relogio com o
+   tempo que o script corre.
+4. **Colunas do BBC Hub**: o painel da coluna fica transparente e cada
+   control (toggle, slider, ...) vira um cartao com fundo, cantos e
+   contorno proprios, com 6 px de espaco entre eles.
 
 ## Validar sem o jogo
 

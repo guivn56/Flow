@@ -62,7 +62,16 @@ assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .
 -- ---------------------------------------------------------------------
 local PURPLE_THEME = {
 	Accent = Color3.fromRGB(170, 80, 255),
+	AccentDark = Color3.fromRGB(16, 7, 26),
 	Background = Color3.fromRGB(10, 8, 15),
+	Surface = Color3.fromRGB(16, 14, 22),
+	Surface2 = Color3.fromRGB(20, 18, 26),
+	Surface3 = Color3.fromRGB(38, 30, 56),
+	Card = Color3.fromRGB(25, 25, 30),
+	Stroke = Color3.fromRGB(44, 36, 62),
+	StrokeHover = Color3.fromRGB(96, 72, 150),
+	Text = Color3.fromRGB(236, 232, 245),
+	Muted = Color3.fromRGB(138, 130, 160),
 }
 
 AirFlow:SetTheme(PURPLE_THEME, true)
@@ -77,6 +86,11 @@ local window = AirFlow:Window({
 	Size = UDim2.fromOffset(760, 520),
 })
 
+-- Marca no topo da tela: o nome do hub e o tempo que o script corre.
+local watermark = window:CreateWatermark({
+	Name = "Airflow",
+})
+
 -- ---------------------------------------------------------------------
 -- 4. CONTEXTO DAS ABAS
 --
@@ -87,8 +101,12 @@ local window = AirFlow:Window({
 local Settings = {}
 
 local function plainColumn(column)
-	for _, child in column.Frame:GetChildren() do
-		if child:IsA("GuiObject") and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
+	local box = column.Frame
+	box.BackgroundTransparency = 1
+	for _, child in ipairs(box:GetChildren()) do
+		if child:IsA("UIStroke") then
+			child.Transparency = 1
+		elseif child:IsA("GuiObject") and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
 			child.Visible = false
 			child.Size = UDim2.new(1, 0, 0, 0)
 		end

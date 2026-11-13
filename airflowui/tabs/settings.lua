@@ -83,12 +83,17 @@ return function(ctx)
 	})
 
 	-- [LOGICA DA WATERMARK AQUI]
+	-- Liga/desliga a marca do topo da tela (a que mostra o relogio).
 	leftColumn:Toggle({
 		Name = "Watermark",
 		Flag = "SettingsWatermark",
 		Default = true,
 		Callback = function(value)
 			Settings.settings_watermark = value
+			local mark = ctx.watermark
+			if mark then
+				mark:SetVisible(value)
+			end
 		end,
 	})
 

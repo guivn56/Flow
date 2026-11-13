@@ -60,10 +60,23 @@ assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .
 
 -- ---------------------------------------------------------------------
 -- 2. TEMA ROXO
+--
+-- O tema completo, nao so a cor de destaque: os paineis, os cartoes e
+-- os tracos tambem sao roxos, para o menu ficar com o mesmo ar do
+-- BBC Hub.
 -- ---------------------------------------------------------------------
 local PURPLE_THEME = {
 	Accent = Color3.fromRGB(170, 80, 255),
+	AccentDark = Color3.fromRGB(16, 7, 26),
 	Background = Color3.fromRGB(10, 8, 15),
+	Surface = Color3.fromRGB(16, 14, 22),
+	Surface2 = Color3.fromRGB(20, 18, 26),
+	Surface3 = Color3.fromRGB(38, 30, 56),
+	Card = Color3.fromRGB(25, 25, 30),
+	Stroke = Color3.fromRGB(44, 36, 62),
+	StrokeHover = Color3.fromRGB(96, 72, 150),
+	Text = Color3.fromRGB(236, 232, 245),
+	Muted = Color3.fromRGB(138, 130, 160),
 }
 
 AirFlow:SetTheme(PURPLE_THEME, true)
@@ -79,7 +92,18 @@ local window = AirFlow:Window({
 })
 
 -- ---------------------------------------------------------------------
--- 4. ESTADO PARTILHADO
+-- 4. WATERMARK E TIMER
+--
+-- Uma caixa no topo central da tela: o nome do hub e o tempo que o
+-- script esta a correr (os segundos desde que a biblioteca carregou).
+-- Fica acima de tudo e nunca rouba o input do menu.
+-- ---------------------------------------------------------------------
+local watermark = window:CreateWatermark({
+	Name = "Airflow",
+})
+
+-- ---------------------------------------------------------------------
+-- 5. ESTADO PARTILHADO
 --
 -- Uma unica tabela para todas as abas: assim uma feature que cruza abas
 -- (o som, o crosshair, o FOV) le e escreve sempre no mesmo sitio.
@@ -87,11 +111,16 @@ local window = AirFlow:Window({
 local Settings = {}
 
 -- O BBC Hub nao usa a barra do groupbox (titulo + chevron): cada secao
--- tem o seu proprio cabecalho. Escondemos essa barra para as colunas
--- ficarem iguais as do BBC Hub.
+-- tem o seu proprio cabecalho. Escondemos essa barra e o painel da
+-- coluna para as colunas ficarem iguais as do BBC Hub: cada control
+-- (toggle, slider) e um cartao com fundo, cantos e contorno proprios.
 local function plainColumn(column)
-	for _, child in column.Frame:GetChildren() do
-		if child:IsA("GuiObject") and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
+	local box = column.Frame
+	box.BackgroundTransparency = 1
+	for _, child in ipairs(box:GetChildren()) do
+		if child:IsA("UIStroke") then
+			child.Transparency = 1
+		elseif child:IsA("GuiObject") and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
 			child.Visible = false
 			child.Size = UDim2.new(1, 0, 0, 0)
 		end
@@ -105,10 +134,11 @@ local ctx = {
 	window = window,
 	Settings = Settings,
 	plainColumn = plainColumn,
+	watermark = watermark,
 }
 
 -- ---------------------------------------------------------------------
--- 5. ABAS
+-- 6. ABAS
 --
 -- A ordem e a ordem em que aparecem na sidebar. Uma aba que falhe nao
 -- leva o menu inteiro abaixo: o resto continua a funcionar.

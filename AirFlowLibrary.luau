@@ -18,6 +18,9 @@ local Library = {}
 Library.Flags = {}
 Library.Windows = {}
 
+-- When the library was loaded: the watermark's clock counts from here.
+Library._scriptStart = os.clock()
+
 local function normalize(source, map)
     local opts = {}
     if type(source) == "string" then
@@ -137,6 +140,10 @@ Library.Theme = {
     Surface = Color3.fromRGB(18, 22, 31),
     Surface2 = Color3.fromRGB(22, 26, 37),
     Surface3 = Color3.fromRGB(37, 44, 60),
+    -- Card: the panel behind a control that stands on its own (a toggle, a
+    -- slider). Darker than the surface it sits on, so every control reads as
+    -- its own box instead of a line in a list.
+    Card = Color3.fromRGB(25, 25, 30),
     Stroke = Color3.fromRGB(34, 40, 55),
     StrokeHover = Color3.fromRGB(70, 84, 112),
     Accent = Color3.fromRGB(128, 160, 246),
@@ -151,7 +158,7 @@ Library.Theme = {
 -- Order decides which key wins when two theme colors are identical.
 local THEME_KEYS = {
     "Accent", "AccentDark", "Background", "Surface", "Surface2", "Surface3",
-    "Stroke", "StrokeHover", "Text", "Muted", "Warning", "Success", "Error",
+    "Card", "Stroke", "StrokeHover", "Text", "Muted", "Warning", "Success", "Error",
 }
 
 local function rgb(r, g, b)
@@ -1101,6 +1108,79 @@ local function card(tab, className, height, opts)
     return frame, frameStroke
 end
 
+-- The BBC Hub look: a control that stands on its own - its own dark panel,
+-- rounded corners and a hairline border - instead of a flush line in a list.
+Library._cardLook = function(frame, frameStroke)
+    tween(frame, { BackgroundColor3 = Theme.Card, BackgroundTransparency = 0 }, 0)
+    tween(frameStroke, { Color = Theme.Stroke, Transparency = 0 }, 0)
+    -- The border is visible now, so it can flash and light up on hover.
+    frameStroke:SetAttribute("Hidden", false)
+end
+
+-- The mark on the left of a control: a small tile with the icon on it. The
+-- default mark is drawn with shapes (three rounded lines), so it never needs
+-- an icon pack or a font that may be missing the character.
+Library._markBadge = function(parent, icon)
+    local badge = create("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 9, 0.5, 0),
+        Size = UDim2.fromOffset(18, 18),
+        BackgroundColor3 = Theme.Surface3,
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        Parent = parent,
+    })
+    corner(badge, UDim.new(0, 6))
+    local parts = {}
+    if icon and resolveIcon(icon) then
+        local mark = create("ImageLabel", {
+            Position = UDim2.fromOffset(3, 3),
+            Size = UDim2.fromOffset(12, 12),
+            BackgroundTransparency = 1,
+            ImageColor3 = Theme.Accent,
+            ScaleType = Enum.ScaleType.Fit,
+            Parent = badge,
+        })
+        applyIcon(mark, icon)
+        parts[1] = mark
+    else
+        for index = 1, 3 do
+            local line = create("Frame", {
+                Position = UDim2.fromOffset(4, 5.5 + (index - 1) * 2.5),
+                Size = UDim2.fromOffset(index == 2 and 7 or 10, 1.5),
+                BackgroundColor3 = Theme.Accent,
+                BorderSizePixel = 0,
+                Parent = badge,
+            })
+            corner(line, UDim.new(1, 0))
+            parts[index] = line
+        end
+    end
+    local function paint(color)
+        for _, part in ipairs(parts) do
+            if part:IsA("ImageLabel") then
+                tintIcon(part, color, true, 0.2)
+            else
+                tween(part, { BackgroundColor3 = color }, 0.2)
+            end
+        end
+    end
+    return badge, paint
+end
+
+-- Moves the name and the description inside a card: the left inset leaves
+-- room for the mark, the right one for the control on the other side.
+Library._insetLabels = function(title, descLabel, left, right)
+    if title then
+        title.Position = UDim2.fromOffset(left, title.Position.Y.Offset)
+        title.Size = UDim2.new(1, -(left + right), title.Size.Y.Scale, title.Size.Y.Offset)
+    end
+    if descLabel then
+        descLabel.Position = UDim2.fromOffset(left, descLabel.Position.Y.Offset)
+        descLabel.Size = UDim2.new(1, -(left + right), 0, descLabel.Size.Y.Offset)
+    end
+end
+
 local function titleDesc(parent, name, desc, rightReserve, metrics)
     metrics = metrics or METRICS.Card
     local title, descLabel
@@ -1524,8 +1604,18 @@ function Tab:Button(opts)
 end
 
 function Tab:Toggle(opts)
-    local button, buttonStroke
-    opts, button, buttonStroke = beginElement(self, opts, { Title = "Name", Description = "Desc", CurrentValue = "Default", Value = "Default" }, "TextButton", 56, "Toggle")
+    local button, buttonStroke, title, descLabel, _height
+    opts, button, buttonStroke, _height, title, descLabel = beginElement(self, opts, { Title = "Name", Description = "Desc", CurrentValue = "Default", Value = "Default" }, "TextButton", 56, "Toggle")
+
+    -- The toggle stands on its own: its own panel, its own border and its
+    -- own mark on the left of the name.
+    Library._cardLook(button, buttonStroke)
+    local paintBadge
+    if opts.Icon ~= false then
+        local _, paint = Library._markBadge(button, opts.Icon)
+        paintBadge = paint
+        Library._insetLabels(title, descLabel, 34, 56)
+    end
 
     local pill = create("Frame", {
         AnchorPoint = Vector2.new(1, 0.5),
@@ -1564,6 +1654,9 @@ function Tab:Toggle(opts)
     local function render(animate)
         local on = self_.Value
         local duration = animate and 0.25 or 0
+        if paintBadge then
+            paintBadge(on and Theme.Accent or Theme.Muted)
+        end
         tween(pill, { BackgroundColor3 = on and Theme.Accent or Theme.Surface3 }, duration)
         tween(pillGlow, { ImageTransparency = on and 0.75 or 1 }, duration)
         local knobSize = TOUCH and 18 or 14
@@ -1626,6 +1719,8 @@ function Tab:Slider(opts)
     local height = metrics.Slider
     local frame, frameStroke = card(self, "Frame", height, opts)
     hoverStroke(frame, frameStroke)
+    -- The slider is a card of its own too, with its own border.
+    Library._cardLook(frame, frameStroke)
 
     label({
         Position = UDim2.fromOffset(14, compact and 5 or 12),
@@ -1918,6 +2013,7 @@ function Tab:Dropdown(opts)
     local options = opts.Options or {}
     local frame, frameStroke, height
     opts, frame, frameStroke, height = beginElement(self, opts, {}, "Frame")
+    Library._cardLook(frame, frameStroke)
     local metrics = metricsOf(self)
     local compact = metrics.Compact
     local chipHeight = metrics.Chip
@@ -2808,6 +2904,7 @@ end
 function Tab:Input(opts)
     local frame, frameStroke, _, titleLabel, descLabel
     opts, frame, frameStroke, _, titleLabel, descLabel = beginElement(self, opts, { Title = "Name", Description = "Desc", PlaceholderText = "Placeholder", CurrentValue = "Default", Value = "Default" }, "Frame", 160, "Input")
+    Library._cardLook(frame, frameStroke)
     local compact = metricsOf(self).Compact
     local boxHeight = compact and metricsOf(self).Chip + 2 or 30
 
@@ -2937,6 +3034,7 @@ end
 function Tab:Keybind(opts)
     local frame, frameStroke, _, titleLabel, descLabel
     opts, frame, frameStroke, _, titleLabel, descLabel = beginElement(self, opts, { Title = "Name", Description = "Desc", CurrentKeybind = "Default", Value = "Default" }, "Frame", 110, "Keybind")
+    Library._cardLook(frame, frameStroke)
     if type(opts.Default) == "string" then
         opts.Default = Enum.KeyCode[opts.Default]
     end
@@ -7534,6 +7632,14 @@ function Library:SetTheme(theme, instant)
     elseif type(theme) ~= "table" then
         return false
     end
+    -- A theme that does not name the card colour gets one derived from its
+    -- own surface, so the cards keep matching the rest of the palette.
+    if not toColor(theme.Card) then
+        local surface2 = toColor(theme.Surface2)
+        if surface2 then
+            theme = setmetatable({ Card = surface2:Lerp(Color3.new(0, 0, 0), 0.35) }, { __index = theme })
+        end
+    end
     local changed = false
     for _, name in ipairs(THEME_KEYS) do
         local color = toColor(theme[name])
@@ -7910,6 +8016,116 @@ local function formatDuration(seconds)
         return string.format("%dm %ds", minutes, seconds % 60)
     end
     return string.format("%ds", seconds)
+end
+
+-- A mark at the top of the screen: the hub's name and a clock with the time
+-- the script has been running. It sits above everything and never takes
+-- input, so it never gets in the way of the menu.
+function Window:CreateWatermark(opts)
+    opts = normalize(opts, { Name = "Text", Title = "Name" })
+    local name = opts.Name or "Airflow"
+    local gui = create("ScreenGui", {
+        Name = (self.Title or "Airflow") .. "Watermark",
+        IgnoreGuiInset = false,
+        ResetOnSpawn = false,
+        DisplayOrder = 1000,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        Parent = defaultParent(),
+    })
+    self._watermarks = self._watermarks or {}
+    table.insert(self._watermarks, gui)
+    pcall(function()
+        if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
+            syn.protect_gui(gui)
+        end
+    end)
+
+    local box = create("Frame", {
+        Name = "Watermark",
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 8),
+        Size = UDim2.new(0.5, 0, 0, 34),
+        BackgroundColor3 = Theme.Card,
+        BackgroundTransparency = 0.05,
+        BorderSizePixel = 0,
+        Active = false,
+        Parent = gui,
+    })
+    corner(box, UDim.new(0, 10))
+    stroke(box, Theme.Accent, 0.55)
+    -- Half the screen, but never wider than a small panel: on a phone it
+    -- shrinks instead of running off the edges.
+    create("UISizeConstraint", {
+        MinSize = Vector2.new(150, 34),
+        MaxSize = Vector2.new(260, 34),
+        Parent = box,
+    })
+
+    local dot = create("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 12, 0.5, 0),
+        Size = UDim2.fromOffset(8, 8),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        Parent = box,
+    })
+    corner(dot, UDim.new(1, 0))
+
+    local title = label({
+        Position = UDim2.fromOffset(28, 0),
+        Size = UDim2.new(1, -104, 1, 0),
+        Text = name,
+        TextSize = 14,
+        FontFace = Fonts.Bold,
+        TextColor3 = Theme.Text,
+        Parent = box,
+    })
+
+    local clock = label({
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -12, 0.5, 0),
+        Size = UDim2.fromOffset(76, 0),
+        Text = "00:00",
+        TextSize = 13,
+        FontFace = Fonts.Medium,
+        TextColor3 = Theme.Accent,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = box,
+    })
+
+    local start = opts.Start or Library._scriptStart or os.clock()
+    local function refresh()
+        local elapsed = math.max(os.clock() - start, 0)
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor(elapsed / 60) % 60
+        local seconds = math.floor(elapsed) % 60
+        if hours > 0 then
+            clock.Text = string.format("%d:%02d:%02d", hours, minutes, seconds)
+        else
+            clock.Text = string.format("%02d:%02d", minutes, seconds)
+        end
+    end
+    refresh()
+    task.spawn(function()
+        while gui.Parent do
+            task.wait(1)
+            refresh()
+        end
+    end)
+
+    return {
+        SetText = function(_, value)
+            title.Text = tostring(value)
+        end,
+        SetVisible = function(_, visible)
+            gui.Enabled = visible ~= false
+        end,
+        Destroy = function()
+            pcall(function()
+                gui:Destroy()
+            end)
+        end,
+    }
 end
 
 local function shortId(id)
@@ -8356,11 +8572,13 @@ function Tab:Groupbox(opts, icon)
         Parent = body,
     })
     Library._space(padding(inner, 0, 0, 6, 8), { 0, 0, 6, 8 })
+    -- Every control is a card of its own, so the rows need room between
+    -- them: without it they read as one glued block.
     Library._space(create("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 2),
+        Padding = UDim.new(0, 6),
         Parent = inner,
-    }), 2)
+    }), 6)
 
     local group = setmetatable({
         Name = opts.Name or "Groupbox",
@@ -19646,6 +19864,12 @@ function Window:Destroy()
     self._connections = {}
     self._inputListeners = { Began = {}, Changed = {}, Ended = {}, Render = {} }
     self._frameSteps = {}
+    for _, mark in ipairs(self._watermarks or {}) do
+        pcall(function()
+            mark:Destroy()
+        end)
+    end
+    self._watermarks = {}
 
     local gui = self.Gui
     local removed = false

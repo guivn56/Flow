@@ -27,8 +27,29 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn
 
 | | |
 |---|---|
-| tamanho | 36 674 bytes |
-| sha256 | `261539a6440a28b902a9588f1a21d853b97319faae37c2520fbca6919f3e43f0` |
+| tamanho | 38 010 bytes |
+| sha256 | `b660b997592d5e007c356453613320ed26746a8d1911231f517d41335beaf928` |
+
+---
+
+## O visual (upgrade "premium", estilo BBC Hub)
+
+| | |
+|---|---|
+| **Cartao por control** | cada toggle, slider, dropdown, input e keybind tem o **seu proprio fundo** (`Card`, `rgb(25,25,30)`), com **UICorner** e um **UIStroke** subtil. As colunas ficam transparentes: os controlos flutuam sobre o fundo da janela. |
+| **Espacamento** | 6 px entre os cartoes de uma coluna (o `UIListLayout` do groupbox), para nada ficar grudado. |
+| **Icono do toggle** | uma marca (o "☰" desenhado com formas, ou um icone lucide se passares `Icon = "..."`) do lado esquerdo do nome. Fica **roxa** com o toggle ligado e **cinzenta** com o toggle desligado. |
+| **Watermark + timer** | uma caixa no **topo central da tela** com o nome do hub e o tempo que o script corre (`os.clock()`), em escuro, com cantos arredondados e contorno na cor do tema. |
+
+A biblioteca ganhou uma cor nova no tema, `Card`. Se um tema nao a definir, ela
+e derivada da propria `Surface2` do tema.
+
+```lua
+-- na biblioteca
+window:CreateWatermark({ Name = "Airflow" })   -- marca + relogio no topo da tela
+```
+
+O `main.lua` cria a marca e o tema roxo completo (nao so a cor de destaque).
 
 ---
 
@@ -37,8 +58,8 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn
 ```
 AirFlowLibrary.luau   a biblioteca do Airflow (o menu em si)
 airflowui/
-  main.lua            entrada: biblioteca, tema roxo, janela, Settings
-                      partilhado, carrega as 6 abas
+  main.lua            entrada: biblioteca, tema roxo, janela, watermark,
+                      Settings partilhado, carrega as 6 abas
   teste_misc.lua      teste da aba MISC sozinha
   build.py            junta as abas num unico ficheiro
   tabs/               uma aba por ficheiro
