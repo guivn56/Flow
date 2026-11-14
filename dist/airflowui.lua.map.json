@@ -1,16 +1,17 @@
 {
   "artifact": "airflowui",
-  "bundle_sha256": "3914a7b86e3ee909b4162cfc738f0af3cc1e12bd90eee6b60dc874e6df9ce960",
-  "bundle_size": 39670,
+  "bundle_sha256": "1cc9bcc688c7ccb97e28e5854ee114748da504891415a06c3e0083f6b3bf838a",
+  "bundle_size": 74075,
   "modules": {
-    "airflowui/main.lua": "2ee1f31fc143e692d6d7c2cdc9ce725fe412c627ec693d6117e31d9b5220195f",
-    "airflowui/tabs/combat.lua": "17d1778cc050b848d451caa59ed7818926aa37b42fa7b63576c11b3313bf9b69",
-    "airflowui/tabs/misc.lua": "cb9b48843c2ad9be92dc07bc7212700be08765a327fa6fb3f0988e9197f5f921",
-    "airflowui/tabs/players.lua": "ca920d6b1687a1456e64b3d2dc9c8fcc94443b729d84c865544c3fb3a73b2a6a",
-    "airflowui/tabs/settings.lua": "062b71a4e61d50fcd42ea2ace72303a2e2e881d9fa66a8c583054d38fa006801",
-    "airflowui/tabs/utility.lua": "4e1600bc274b1f445682d0697d88829588b96b86befea688021ae86864f957ba",
-    "airflowui/tabs/visuals.lua": "539396ce3b8a1f54e73af650a03a498ea8643a858f074395e8bfbca93ef9cd9f"
+    "airflowui/main.lua": "c34f82b479a9f04be5fd8842e6bba76577919a54eac3d478ed53c271b5369ca3",
+    "airflowui/tabs/combat.lua": "b970223a19cbc7c419e4ccebc98fe89cc7abe735d4214d9143c854ec396ef0c5",
+    "airflowui/tabs/lootfinder.lua": "c5347d331616ad28a4ae84ad43c0096ed4ad24c713bd90fb4e57659dd7b5e868",
+    "airflowui/tabs/misc.lua": "d7584dbf581f8428957051ea9100ed093271dc3a3633377f35b2494402cb798f",
+    "airflowui/tabs/players.lua": "5948acf3af646bc7e19791869394d5b0704f742797ad6087761d48eb5896a4b7",
+    "airflowui/tabs/server.lua": "810d8d270f1e6fba5f941a56ca643d635272b47538461446ec5832d806df14a1",
+    "airflowui/tabs/visuals.lua": "a01f7b8a09b633951f72dacba8b89532eb4d2f3928cc1d94ae774deed61bd78c",
+    "airflowui/tabs/world.lua": "b12e5c44fb7a526b2646d8787a561dae81d77eefacf483b0f6444bf06772fe27"
   },
   "obfuscated": false,
-  "tabs": 6
+  "tabs": 7
 }

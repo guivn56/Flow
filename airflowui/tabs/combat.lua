@@ -5,13 +5,17 @@
 --   coluna esquerda : AIM
 --   coluna direita  : GUN + TRIGGERBOT + KILL AURA
 --
--- A logica pesada fica em marcadores: cada callback escreve o valor na
--- tabela Settings e onde estao os "-- [LOGICA ... AQUI]".
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
+--
+-- O toggle traz um SUB MENU: o icone da esquerda (o "☰") vira um
+-- botao que abre uma caixa por baixo do toggle, com as opcoes extras.
+-- O painel cresce com a coluna, por isso a rolagem no telemóvel
+-- continua a funcionar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
 	-- ABA "COMBAT" (icone "crosshair")
@@ -31,46 +35,44 @@ return function(ctx)
 	-- SECCAO "AIM" ---------------------------------------------------
 	leftColumn:Section("AIM")
 
-	-- [LOGICA DO SILENT AIM AQUI]
-	--
-	-- O toggle traz um SUB MENU: o icone da esquerda (o "☰") vira um
-	-- botao que abre uma caixa por baixo do toggle, com as opcoes extras.
-	-- O painel cresce com a coluna, por isso a rolagem no telemóvel
-	-- continua a funcionar.
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Silent Aim",
 		Flag = "CombatSilentAim",
 		Callback = function(value)
-			Settings.combat_silent_aim = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 		SubElements = {
 			{
 				Type = "Slider",
 				Name = "Hit Chance",
+				Flag = "CombatSilentAimHitChance",
 				Min = 0,
 				Max = 100,
 				Step = 1,
 				Default = 50,
 				Suffix = " %",
 				Callback = function(value)
-					print("Slider alterado")
-					-- [LOGICA AQUI]
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
 				end,
 			},
 			{
 				Type = "Dropdown",
 				Name = "Target Part",
+				Flag = "CombatSilentAimTargetPart",
 				Options = { "Head", "Torso", "Nearest" },
 				Default = "Head",
 				Callback = function(value)
-					print("Dropdown alterado")
-					-- [LOGICA AQUI]
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
 				end,
 			},
 		},
 	})
 
-	-- [LOGICA DO FOV DA MIRA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Slider({
 		Name = "Aim FOV",
 		Flag = "CombatAimFov",
@@ -80,84 +82,145 @@ return function(ctx)
 		Default = 120,
 		Suffix = " px",
 		Callback = function(value)
-			Settings.combat_aim_fov = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO AIMBOT AQUI]
-	--
-	-- Segundo exemplo de sub menu: o Smoothness e o Prediction deixaram de
-	-- ser cartoes soltos na coluna e passaram para dentro do painel do
-	-- Aimbot (os flags continuam os mesmos).
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Aimbot",
 		Flag = "CombatAimbot",
 		Callback = function(value)
-			Settings.combat_aimbot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 		SubElements = {
 			{
 				Type = "Slider",
 				Name = "Smoothness",
-				Flag = "CombatSmoothing",
+				Flag = "CombatAimbotSmoothness",
 				Min = 0,
 				Max = 100,
 				Step = 1,
 				Default = 30,
 				Suffix = " %",
 				Callback = function(value)
-					Settings.combat_smoothing = value
-					print("Slider alterado")
-					-- [LOGICA AQUI]
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
 				end,
 			},
 			{
 				Type = "Toggle",
 				Name = "Prediction",
-				Flag = "CombatPrediction",
+				Flag = "CombatAimbotPrediction",
 				Callback = function(value)
-					Settings.combat_prediction = value
-					print("Toggle alterado")
-					-- [LOGICA AQUI]
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
 				end,
 			},
 		},
 	})
 
-	-- [LOGICA DO AUTO SHOOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Auto Shoot",
 		Flag = "CombatAutoShoot",
 		Callback = function(value)
-			Settings.combat_auto_shoot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Delay",
+				Flag = "CombatAutoShootDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 50,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO STICKY TARGET AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Sticky Target",
 		Flag = "CombatStickyTarget",
 		Callback = function(value)
-			Settings.combat_sticky_target = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Stick Delay",
+				Flag = "CombatStickyTargetDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO TEAM CHECK AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Team Check",
 		Flag = "CombatTeamCheck",
 		Callback = function(value)
-			Settings.combat_team_check = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Team Mode",
+				Flag = "CombatTeamCheckMode",
+				Options = { "Skip", "Ignore", "Block" },
+				Default = "Skip",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO FOV CIRCLE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "FOV Circle",
 		Flag = "CombatFovCircle",
 		Callback = function(value)
-			Settings.combat_fov_circle = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Circle Size",
+				Flag = "CombatFovCircleSize",
+				Min = 10,
+				Max = 720,
+				Step = 5,
+				Default = 120,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- -----------------------------------------------------------------
@@ -167,64 +230,172 @@ return function(ctx)
 	-- SECCAO "GUN" ---------------------------------------------------
 	rightColumn:Section("GUN")
 
-	-- [LOGICA DO NO RECOIL AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "No Recoil",
 		Flag = "CombatNoRecoil",
 		Callback = function(value)
-			Settings.combat_no_recoil = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Recoil Power",
+				Flag = "CombatNoRecoilPower",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 100,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA FIRE RATE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Fire Rate",
 		Flag = "CombatFireRate",
 		Callback = function(value)
-			Settings.combat_fire_rate = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Rate",
+				Flag = "CombatFireRateValue",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO AUTO RELOAD AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Auto Reload",
 		Flag = "CombatAutoReload",
 		Callback = function(value)
-			Settings.combat_auto_reload = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Reload Delay",
+				Flag = "CombatAutoReloadDelay",
+				Min = 0,
+				Max = 1000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO FAKE SCOPE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Fake Scope",
 		Flag = "CombatFakeScope",
 		Callback = function(value)
-			Settings.combat_fake_scope = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Zoom",
+				Flag = "CombatFakeScopeZoom",
+				Min = 1,
+				Max = 10,
+				Step = 1,
+				Default = 3,
+				Suffix = " x",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA GRENADE PREDICTION AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Grenade Prediction",
 		Flag = "CombatGrenadePrediction",
 		Callback = function(value)
-			Settings.combat_grenade_prediction = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Prediction Mode",
+				Flag = "CombatGrenadePredictionMode",
+				Options = { "Line", "Arc", "Both" },
+				Default = "Line",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "TRIGGERBOT" -------------------------------------------
 	rightColumn:Section("TRIGGERBOT")
 
-	-- [LOGICA DO TRIGGERBOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Triggerbot",
 		Flag = "CombatTriggerbot",
 		Callback = function(value)
-			Settings.combat_triggerbot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Only ADS",
+				Flag = "CombatTriggerbotOnlyAds",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Slider",
+				Name = "Trigger Delay",
+				Flag = "CombatTriggerbotDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 50,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA DISTANCIA DO TRIGGERBOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Slider({
 		Name = "Triggerbot Distance",
 		Flag = "CombatTriggerbotDistance",
@@ -234,53 +405,60 @@ return function(ctx)
 		Default = 50,
 		Suffix = " px",
 		Callback = function(value)
-			Settings.combat_triggerbot_distance = value
-		end,
-	})
-
-	-- [LOGICA DO TRIGGERBOT SO EM ADS AQUI]
-	rightColumn:Toggle({
-		Name = "Only ADS",
-		Flag = "CombatTriggerbotOnlyAds",
-		Callback = function(value)
-			Settings.combat_triggerbot_only_ads = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
 	-- SECCAO "KILL AURA" ---------------------------------------------
 	rightColumn:Section("KILL AURA")
 
-	-- [LOGICA DO KILL AURA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Kill Aura",
 		Flag = "CombatKillAura",
 		Callback = function(value)
-			Settings.combat_kill_aura = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Attack Type",
+				Flag = "CombatKillAuraAttackType",
+				Options = { "Power Attack", "Normal", "Heavy", "Light" },
+				Default = "Power Attack",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Slider",
+				Name = "Kill Aura Range",
+				Flag = "CombatKillAuraRange",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 10,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO ALCANCE DO KILL AURA AQUI]
-	rightColumn:Slider({
-		Name = "Kill Aura Range",
-		Flag = "CombatKillAuraRange",
-		Min = 0,
-		Max = 100,
-		Step = 1,
-		Default = 10,
-		Suffix = " studs",
-		Callback = function(value)
-			Settings.combat_kill_aura_range = value
-		end,
-	})
-
-	-- [LOGICA DO TIPO DE ATAQUE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Dropdown({
-		Name = "Attack Type",
-		Flag = "CombatKillAuraAttackType",
-		Options = { "Power Attack", "Normal", "Heavy", "Light" },
-		Default = "Power Attack",
+		Name = "Target Team",
+		Flag = "CombatKillAuraTargetTeam",
+		Options = { "Enemy", "Other", "All" },
+		Default = "Enemy",
 		Callback = function(value)
-			Settings.combat_kill_aura_attack = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 

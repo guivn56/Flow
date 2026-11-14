@@ -58,23 +58,22 @@ local AirFlow = loadLibrary()
 assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .. LIBRARY_PATH .. ")")
 
 -- ---------------------------------------------------------------------
--- 2. TEMA ROXO
+-- 2. TEMA (cinza escuro + roxo so nos botoes)
 -- ---------------------------------------------------------------------
-local PURPLE_THEME = {
+local DARK_THEME = {
 	Accent = Color3.fromRGB(170, 80, 255),
-	AccentDark = Color3.fromRGB(16, 7, 26),
-	Background = Color3.fromRGB(10, 8, 15),
-	Surface = Color3.fromRGB(16, 14, 22),
-	Surface2 = Color3.fromRGB(20, 18, 26),
-	Surface3 = Color3.fromRGB(38, 30, 56),
-	Card = Color3.fromRGB(25, 25, 30),
-	Stroke = Color3.fromRGB(44, 36, 62),
-	StrokeHover = Color3.fromRGB(96, 72, 150),
-	Text = Color3.fromRGB(236, 232, 245),
-	Muted = Color3.fromRGB(138, 130, 160),
+	AccentDark = Color3.fromRGB(90, 40, 160),
+	Background = Color3.fromRGB(15, 15, 15),
+	Surface = Color3.fromRGB(22, 22, 22),
+	Surface2 = Color3.fromRGB(30, 30, 30),
+	Surface3 = Color3.fromRGB(40, 40, 40),
+	Stroke = Color3.fromRGB(50, 50, 50),
+	StrokeHover = Color3.fromRGB(80, 80, 80),
+	Text = Color3.fromRGB(255, 255, 255),
+	Muted = Color3.fromRGB(160, 160, 160),
 }
 
-AirFlow:SetTheme(PURPLE_THEME, true)
+AirFlow:SetTheme(DARK_THEME, true)
 
 -- ---------------------------------------------------------------------
 -- 3. MENU
@@ -82,7 +81,7 @@ AirFlow:SetTheme(PURPLE_THEME, true)
 local window = AirFlow:Window({
 	Name = "AirflowUI",
 	Title = "Airflow",
-	Theme = PURPLE_THEME,
+	Theme = DARK_THEME,
 	Size = UDim2.fromOffset(760, 520),
 })
 

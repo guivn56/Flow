@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build do AirflowUI: junta as 6 abas num unico ficheiro.
+"""Build do AirflowUI: junta as 7 abas num unico ficheiro.
 
 O bundle (dist/airflowui.lua) e o artefacto que se cola no executor:
 um ficheiro, sem readfile das abas, sem pasta tabs/ no telemóvel.
@@ -27,12 +27,13 @@ TABS_DIR = os.path.join(ROOT, "tabs")
 
 # A ordem e a ordem em que as abas aparecem na sidebar.
 TABS = [
-    "tabs/combat.lua",
-    "tabs/players.lua",
     "tabs/visuals.lua",
+    "tabs/players.lua",
+    "tabs/combat.lua",
+    "tabs/world.lua",
     "tabs/misc.lua",
-    "tabs/utility.lua",
-    "tabs/settings.lua",
+    "tabs/lootfinder.lua",
+    "tabs/server.lua",
 ]
 
 PLACEHOLDER = "local EMBEDDED = {}"

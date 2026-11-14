@@ -7,13 +7,15 @@
 -- seu cabecalho e a logica pesada fica em marcadores.
 --
 -- Ficheiros:
---   main.lua          este: biblioteca, tema, janela, tabela Settings
---   tabs/misc.lua     aba MISC
---   tabs/combat.lua   aba COMBAT
---   tabs/players.lua  aba PLAYERS
+--   main.lua          este: biblioteca, tema, janela, fundo hexagonal,
+--                     watermark, painel de keybinds, Settings e abas
 --   tabs/visuals.lua  aba VISUALS
---   tabs/utility.lua  aba UTILITY
---   tabs/settings.lua aba SETTINGS
+--   tabs/players.lua  aba PLAYER
+--   tabs/combat.lua   aba COMBAT
+--   tabs/world.lua    aba WORLD
+--   tabs/misc.lua     aba MISC
+--   tabs/lootfinder.lua aba LOOTFINDER
+--   tabs/server.lua   aba SERVER
 --
 -- Correr no Delta: cola este ficheiro. A biblioteca e buscada na internet
 -- (game:HttpGet), por isso funciona no telemóvel sem ficheiro local. As
@@ -25,7 +27,41 @@ local ROOT = "/sdcard/Delta/Workspace/AirflowUI"
 local LIBRARY_PATH = "/sdcard/Download/AirFlowLibrary.luau"
 
 -- ---------------------------------------------------------------------
--- 1. BIBLIOTECA
+-- 1. AJUDANTES
+-- ---------------------------------------------------------------------
+-- O IsA do Roblox devolve true para as subclasses ("GuiObject" e true
+-- para um Frame). Alguns ambientes (e o mock de testes) só devolvem true
+-- para o nome exato, por isso o teste e feito classe a classe.
+local GUI_CLASSES = {
+	"GuiObject",
+	"Frame",
+	"TextLabel",
+	"TextButton",
+	"TextBox",
+	"ScrollingFrame",
+	"ImageLabel",
+	"ViewportFrame",
+}
+
+local function isGui(object)
+	-- No Roblox uma Instance e um "userdata", no mock e uma "table".
+	if not object then
+		return false
+	end
+	local kind = type(object)
+	if kind ~= "table" and kind ~= "userdata" then
+		return false
+	end
+	for _, class in ipairs(GUI_CLASSES) do
+		if object:IsA(class) then
+			return true
+		end
+	end
+	return false
+end
+
+-- ---------------------------------------------------------------------
+-- 2. BIBLIOTECA
 -- ---------------------------------------------------------------------
 local function loadLibrary()
 	local env = getgenv and getgenv()
@@ -60,25 +96,24 @@ local AirFlow = loadLibrary()
 assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .. LIBRARY_PATH .. ")")
 
 -- ---------------------------------------------------------------------
--- 2. TEMA ROXO
---
--- O tema completo, nao so a cor de destaque: os paineis, os cartoes e
--- os tracos tambem sao roxos, para o menu ficar com o mesmo ar do
--- BBC Hub.
+-- 2. TEMA (BBC Hub: cinza escuro + roxo so nos botoes)
 -- ---------------------------------------------------------------------
 local DARK_THEME = {
-    Accent = Color3.fromRGB(170, 80, 255),
-    AccentDark = Color3.fromRGB(90, 40, 160),
-    Background = Color3.fromRGB(15, 15, 15),
-    Surface = Color3.fromRGB(22, 22, 22),
-    Surface2 = Color3.fromRGB(30, 30, 30),
-    Surface3 = Color3.fromRGB(40, 40, 40),
-    Stroke = Color3.fromRGB(50, 50, 50),
-    Text = Color3.fromRGB(255, 255, 255),
-    Muted = Color3.fromRGB(160, 160, 160)
+	Accent = Color3.fromRGB(170, 80, 255),
+	AccentDark = Color3.fromRGB(90, 40, 160),
+	Background = Color3.fromRGB(15, 15, 15),
+	Surface = Color3.fromRGB(22, 22, 22),
+	Surface2 = Color3.fromRGB(30, 30, 30),
+	Surface3 = Color3.fromRGB(40, 40, 40),
+	Stroke = Color3.fromRGB(50, 50, 50),
+	StrokeHover = Color3.fromRGB(80, 80, 80),
+	Text = Color3.fromRGB(255, 255, 255),
+	Muted = Color3.fromRGB(160, 160, 160),
 }
 
-AirFlow:SetTheme(PURPLE_THEME, true)
+-- O tema e aplicado ANTES da janela: assim tudo ja nasce com as cores
+-- certas (sem o "flash" da paleta antiga).
+AirFlow:SetTheme(DARK_THEME, true)
 
 -- ---------------------------------------------------------------------
 -- 3. JANELA
@@ -86,12 +121,42 @@ AirFlow:SetTheme(PURPLE_THEME, true)
 local window = AirFlow:Window({
 	Name = "AirflowUI",
 	Title = "Airflow",
-	Theme = PURPLE_THEME,
+	Theme = DARK_THEME,
 	Size = UDim2.fromOffset(760, 520),
 })
 
 -- ---------------------------------------------------------------------
--- 4. WATERMARK E TIMER
+-- 4. FUNDO HEXAGONAL
+--
+-- Um ImageLabel com o padrao hexagonal em mosaico (50x50) por baixo de
+-- tudo o que esta dentro da janela (ZIndex -1). Vive no Body para
+-- ficar preso a janela e desaparecer com ela.
+-- ---------------------------------------------------------------------
+local function createHexBackground(win)
+	local host = win.Body or win.Root
+	if not host then
+		return nil
+	end
+	local hex = Instance.new("ImageLabel")
+	hex.Name = "HexBackground"
+	hex.Size = UDim2.fromScale(1, 1)
+	hex.Position = UDim2.fromOffset(0, 0)
+	hex.BackgroundTransparency = 1
+	hex.BorderSizePixel = 0
+	hex.Image = "rbxassetid://12629542321"
+	hex.ScaleType = Enum.ScaleType.Tile
+	hex.TileSize = UDim2.fromOffset(50, 50)
+	hex.ImageColor3 = Color3.fromRGB(20, 20, 20)
+	hex.ImageTransparency = 0.8
+	hex.ZIndex = -1
+	hex.Parent = host
+	return hex
+end
+
+createHexBackground(window)
+
+-- ---------------------------------------------------------------------
+-- 5. WATERMARK E TIMER
 --
 -- Uma caixa no topo central da tela: o nome do hub e o tempo que o
 -- script esta a correr (os segundos desde que a biblioteca carregou).
@@ -101,8 +166,175 @@ local watermark = window:CreateWatermark({
 	Name = "Airflow",
 })
 
+-- A posicao e corrigida aqui: topo central da tela (0.5, 0), com a
+-- margem de 10 px do topo.
+do
+	local guis = window._watermarks
+	local gui = guis and guis[#guis]
+	local box = gui and gui:FindFirstChild("Watermark")
+	if box and isGui(box) then
+		box.Position = UDim2.new(0.5, 0, 0, 10)
+		box.AnchorPoint = Vector2.new(0.5, 0)
+		box.ZIndex = 1
+	end
+end
+
 -- ---------------------------------------------------------------------
--- 5. ESTADO PARTILHADO
+-- 6. PAINEL DE KEYBINDS (canto superior direito)
+--
+-- Lista dos atalhos do hub. So UI: nenhuma tecla e lida aqui, a lista
+-- e apenas informativa.
+-- ---------------------------------------------------------------------
+local KEYBINDS = {
+	{ key = "RShift", label = "UI" },
+	{ key = "LAlt", label = "Cursor" },
+	{ key = "Equals", label = "Auto Run" },
+	{ key = "G", label = "Fly" },
+	{ key = "X", label = "Third Person" },
+	{ key = "Z", label = "Zoom" },
+	{ key = "C", label = "Lock" },
+	{ key = "B", label = "Activation" },
+	{ key = "J", label = "Aim Parts" },
+	{ key = "MB3", label = "Add Friend" },
+	{ key = "U", label = "Underground" },
+}
+
+local function guiParent()
+	local hidden
+	pcall(function()
+		if typeof(gethui) == "function" then
+			hidden = gethui()
+		end
+	end)
+	if typeof(hidden) == "Instance" then
+		return hidden
+	end
+	local core
+	pcall(function()
+		core = game:GetService("CoreGui")
+		local probe = Instance.new("Folder")
+		probe.Parent = core
+		probe:Destroy()
+	end)
+	if core then
+		return core
+	end
+	return game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function createKeybindPanel()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AirflowKeybinds"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = false
+	gui.DisplayOrder = 998
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.Parent = guiParent()
+
+	local panel = Instance.new("Frame")
+	panel.Name = "KeybindPanel"
+	panel.AnchorPoint = Vector2.new(1, 0)
+	panel.Position = UDim2.new(1, -14, 0, 10)
+	panel.Size = UDim2.fromOffset(190, 34 + #KEYBINDS * 18 + 10)
+	panel.BackgroundColor3 = DARK_THEME.Surface
+	panel.BackgroundTransparency = 0.15
+	panel.BorderSizePixel = 0
+	panel.Active = false
+	panel.ZIndex = 1
+	panel.Parent = gui
+
+	local panelCorner = Instance.new("UICorner")
+	panelCorner.CornerRadius = UDim.new(0, 10)
+	panelCorner.Parent = panel
+
+	local panelStroke = Instance.new("UIStroke")
+	panelStroke.Color = DARK_THEME.Stroke
+	panelStroke.Thickness = 1
+	panelStroke.Transparency = 0.35
+	panelStroke.Parent = panel
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.Position = UDim2.fromOffset(12, 8)
+	title.Size = UDim2.new(1, -24, 0, 16)
+	title.Font = Enum.Font.GothamBold
+	title.Text = "KEYBINDS"
+	title.TextSize = 11
+	title.TextColor3 = DARK_THEME.Muted
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.ZIndex = 2
+	title.Parent = panel
+
+	local rows = Instance.new("Frame")
+	rows.Name = "Rows"
+	rows.BackgroundTransparency = 1
+	rows.Position = UDim2.fromOffset(0, 28)
+	rows.Size = UDim2.new(1, 0, 1, -34)
+	rows.ZIndex = 2
+	rows.Parent = panel
+
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 2)
+	layout.Parent = rows
+
+	for index, entry in ipairs(KEYBINDS) do
+		local row = Instance.new("Frame")
+		row.Name = entry.key
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, -12, 0, 16)
+		row.Position = UDim2.fromOffset(6, 0)
+		row.LayoutOrder = index
+		row.ZIndex = 2
+		row.Parent = rows
+
+		local chip = Instance.new("TextLabel")
+		chip.Name = "Key"
+		chip.BackgroundColor3 = DARK_THEME.Surface2
+		chip.BackgroundTransparency = 0.1
+		chip.BorderSizePixel = 0
+		chip.Position = UDim2.fromOffset(0, 0)
+		chip.Size = UDim2.fromOffset(62, 16)
+		chip.Font = Enum.Font.GothamBold
+		chip.Text = entry.key
+		chip.TextSize = 11
+		chip.TextColor3 = DARK_THEME.Accent
+		chip.TextXAlignment = Enum.TextXAlignment.Center
+		chip.ZIndex = 3
+		chip.Parent = row
+
+		local chipCorner = Instance.new("UICorner")
+		chipCorner.CornerRadius = UDim.new(1, 0)
+		chipCorner.Parent = chip
+
+		local chipStroke = Instance.new("UIStroke")
+		chipStroke.Color = DARK_THEME.Stroke
+		chipStroke.Thickness = 1
+		chipStroke.Transparency = 0.2
+		chipStroke.Parent = chip
+
+		local name = Instance.new("TextLabel")
+		name.Name = "Label"
+		name.BackgroundTransparency = 1
+		name.Position = UDim2.fromOffset(72, 0)
+		name.Size = UDim2.new(1, -78, 1, 0)
+		name.Font = Enum.Font.Gotham
+		name.Text = entry.label
+		name.TextSize = 12
+		name.TextColor3 = DARK_THEME.Text
+		name.TextXAlignment = Enum.TextXAlignment.Left
+		name.ZIndex = 3
+		name.Parent = row
+	end
+
+	return gui
+end
+
+createKeybindPanel()
+
+-- ---------------------------------------------------------------------
+-- 7. ESTADO PARTILHADO
 --
 -- Uma unica tabela para todas as abas: assim uma feature que cruza abas
 -- (o som, o crosshair, o FOV) le e escreve sempre no mesmo sitio.
@@ -119,7 +351,7 @@ local function plainColumn(column)
 	for _, child in ipairs(box:GetChildren()) do
 		if child:IsA("UIStroke") then
 			child.Transparency = 1
-		elseif child:IsA("GuiObject") and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
+		elseif isGui(child) and (child.LayoutOrder == 1 or child.LayoutOrder == 2) then
 			child.Visible = false
 			child.Size = UDim2.new(1, 0, 0, 0)
 		end
@@ -137,18 +369,19 @@ local ctx = {
 }
 
 -- ---------------------------------------------------------------------
--- 6. ABAS
+-- 8. ABAS
 --
 -- A ordem e a ordem em que aparecem na sidebar. Uma aba que falhe nao
 -- leva o menu inteiro abaixo: o resto continua a funcionar.
 -- ---------------------------------------------------------------------
 local TABS = {
-	{ file = "tabs/combat.lua", name = "COMBAT" },
-	{ file = "tabs/players.lua", name = "PLAYERS" },
 	{ file = "tabs/visuals.lua", name = "VISUALS" },
+	{ file = "tabs/players.lua", name = "PLAYER" },
+	{ file = "tabs/combat.lua", name = "COMBAT" },
+	{ file = "tabs/world.lua", name = "WORLD" },
 	{ file = "tabs/misc.lua", name = "MISC" },
-	{ file = "tabs/utility.lua", name = "UTILITY" },
-	{ file = "tabs/settings.lua", name = "SETTINGS" },
+	{ file = "tabs/lootfinder.lua", name = "LOOTFINDER" },
+	{ file = "tabs/server.lua", name = "SERVER" },
 }
 
 -- O build (airflowui/build.py) troca esta linha pela tabela com as abas
@@ -156,526 +389,6 @@ local TABS = {
 -- tabs/ no telemóvel. Fora do bundle a tabela fica vazia e as abas vem
 -- do disco (ROOT).
 local EMBEDDED = {
-	["tabs/combat.lua"] = [==[-- =====================================================================
--- tabs/combat.lua - aba COMBAT
---
--- Layout do BBC Hub: DUAS COLUNAS lado a lado.
---   coluna esquerda : AIM
---   coluna direita  : GUN + TRIGGERBOT + KILL AURA
---
--- A logica pesada fica em marcadores: cada callback escreve o valor na
--- tabela Settings e onde estao os "-- [LOGICA ... AQUI]".
--- =====================================================================
-
-return function(ctx)
-	local window = ctx.window
-	local Settings = ctx.Settings
-
-	-- -----------------------------------------------------------------
-	-- ABA "COMBAT" (icone "crosshair")
-	-- -----------------------------------------------------------------
-	local combatTab = window:CreateTab({ Name = "COMBAT" }, "crosshair")
-
-	local leftColumn = combatTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
-	local rightColumn = combatTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
-
-	ctx.plainColumn(leftColumn)
-	ctx.plainColumn(rightColumn)
-
-	-- -----------------------------------------------------------------
-	-- COLUNA ESQUERDA
-	-- -----------------------------------------------------------------
-
-	-- SECCAO "AIM" ---------------------------------------------------
-	leftColumn:Section("AIM")
-
-	-- [LOGICA DO SILENT AIM AQUI]
-	--
-	-- O toggle traz um SUB MENU: o icone da esquerda (o "☰") vira um
-	-- botao que abre uma caixa por baixo do toggle, com as opcoes extras.
-	-- O painel cresce com a coluna, por isso a rolagem no telemóvel
-	-- continua a funcionar.
-	leftColumn:Toggle({
-		Name = "Silent Aim",
-		Flag = "CombatSilentAim",
-		Callback = function(value)
-			Settings.combat_silent_aim = value
-		end,
-		SubElements = {
-			{
-				Type = "Slider",
-				Name = "Hit Chance",
-				Min = 0,
-				Max = 100,
-				Step = 1,
-				Default = 50,
-				Suffix = " %",
-				Callback = function(value)
-					print("Slider alterado")
-					-- [LOGICA AQUI]
-				end,
-			},
-			{
-				Type = "Dropdown",
-				Name = "Target Part",
-				Options = { "Head", "Torso", "Nearest" },
-				Default = "Head",
-				Callback = function(value)
-					print("Dropdown alterado")
-					-- [LOGICA AQUI]
-				end,
-			},
-		},
-	})
-
-	-- [LOGICA DO FOV DA MIRA AQUI]
-	leftColumn:Slider({
-		Name = "Aim FOV",
-		Flag = "CombatAimFov",
-		Min = 0,
-		Max = 720,
-		Step = 5,
-		Default = 120,
-		Suffix = " px",
-		Callback = function(value)
-			Settings.combat_aim_fov = value
-		end,
-	})
-
-	-- [LOGICA DO AIMBOT AQUI]
-	--
-	-- Segundo exemplo de sub menu: o Smoothness e o Prediction deixaram de
-	-- ser cartoes soltos na coluna e passaram para dentro do painel do
-	-- Aimbot (os flags continuam os mesmos).
-	leftColumn:Toggle({
-		Name = "Aimbot",
-		Flag = "CombatAimbot",
-		Callback = function(value)
-			Settings.combat_aimbot = value
-		end,
-		SubElements = {
-			{
-				Type = "Slider",
-				Name = "Smoothness",
-				Flag = "CombatSmoothing",
-				Min = 0,
-				Max = 100,
-				Step = 1,
-				Default = 30,
-				Suffix = " %",
-				Callback = function(value)
-					Settings.combat_smoothing = value
-					print("Slider alterado")
-					-- [LOGICA AQUI]
-				end,
-			},
-			{
-				Type = "Toggle",
-				Name = "Prediction",
-				Flag = "CombatPrediction",
-				Callback = function(value)
-					Settings.combat_prediction = value
-					print("Toggle alterado")
-					-- [LOGICA AQUI]
-				end,
-			},
-		},
-	})
-
-	-- [LOGICA DO AUTO SHOOT AQUI]
-	leftColumn:Toggle({
-		Name = "Auto Shoot",
-		Flag = "CombatAutoShoot",
-		Callback = function(value)
-			Settings.combat_auto_shoot = value
-		end,
-	})
-
-	-- [LOGICA DO STICKY TARGET AQUI]
-	leftColumn:Toggle({
-		Name = "Sticky Target",
-		Flag = "CombatStickyTarget",
-		Callback = function(value)
-			Settings.combat_sticky_target = value
-		end,
-	})
-
-	-- [LOGICA DO TEAM CHECK AQUI]
-	leftColumn:Toggle({
-		Name = "Team Check",
-		Flag = "CombatTeamCheck",
-		Callback = function(value)
-			Settings.combat_team_check = value
-		end,
-	})
-
-	-- [LOGICA DO FOV CIRCLE AQUI]
-	leftColumn:Toggle({
-		Name = "FOV Circle",
-		Flag = "CombatFovCircle",
-		Callback = function(value)
-			Settings.combat_fov_circle = value
-		end,
-	})
-
-	-- -----------------------------------------------------------------
-	-- COLUNA DIREITA
-	-- -----------------------------------------------------------------
-
-	-- SECCAO "GUN" ---------------------------------------------------
-	rightColumn:Section("GUN")
-
-	-- [LOGICA DO NO RECOIL AQUI]
-	rightColumn:Toggle({
-		Name = "No Recoil",
-		Flag = "CombatNoRecoil",
-		Callback = function(value)
-			Settings.combat_no_recoil = value
-		end,
-	})
-
-	-- [LOGICA DA FIRE RATE AQUI]
-	rightColumn:Toggle({
-		Name = "Fire Rate",
-		Flag = "CombatFireRate",
-		Callback = function(value)
-			Settings.combat_fire_rate = value
-		end,
-	})
-
-	-- [LOGICA DO AUTO RELOAD AQUI]
-	rightColumn:Toggle({
-		Name = "Auto Reload",
-		Flag = "CombatAutoReload",
-		Callback = function(value)
-			Settings.combat_auto_reload = value
-		end,
-	})
-
-	-- [LOGICA DO FAKE SCOPE AQUI]
-	rightColumn:Toggle({
-		Name = "Fake Scope",
-		Flag = "CombatFakeScope",
-		Callback = function(value)
-			Settings.combat_fake_scope = value
-		end,
-	})
-
-	-- [LOGICA DA GRENADE PREDICTION AQUI]
-	rightColumn:Toggle({
-		Name = "Grenade Prediction",
-		Flag = "CombatGrenadePrediction",
-		Callback = function(value)
-			Settings.combat_grenade_prediction = value
-		end,
-	})
-
-	-- SECCAO "TRIGGERBOT" -------------------------------------------
-	rightColumn:Section("TRIGGERBOT")
-
-	-- [LOGICA DO TRIGGERBOT AQUI]
-	rightColumn:Toggle({
-		Name = "Triggerbot",
-		Flag = "CombatTriggerbot",
-		Callback = function(value)
-			Settings.combat_triggerbot = value
-		end,
-	})
-
-	-- [LOGICA DA DISTANCIA DO TRIGGERBOT AQUI]
-	rightColumn:Slider({
-		Name = "Triggerbot Distance",
-		Flag = "CombatTriggerbotDistance",
-		Min = 0,
-		Max = 1000,
-		Step = 10,
-		Default = 50,
-		Suffix = " px",
-		Callback = function(value)
-			Settings.combat_triggerbot_distance = value
-		end,
-	})
-
-	-- [LOGICA DO TRIGGERBOT SO EM ADS AQUI]
-	rightColumn:Toggle({
-		Name = "Only ADS",
-		Flag = "CombatTriggerbotOnlyAds",
-		Callback = function(value)
-			Settings.combat_triggerbot_only_ads = value
-		end,
-	})
-
-	-- SECCAO "KILL AURA" ---------------------------------------------
-	rightColumn:Section("KILL AURA")
-
-	-- [LOGICA DO KILL AURA AQUI]
-	rightColumn:Toggle({
-		Name = "Kill Aura",
-		Flag = "CombatKillAura",
-		Callback = function(value)
-			Settings.combat_kill_aura = value
-		end,
-	})
-
-	-- [LOGICA DO ALCANCE DO KILL AURA AQUI]
-	rightColumn:Slider({
-		Name = "Kill Aura Range",
-		Flag = "CombatKillAuraRange",
-		Min = 0,
-		Max = 100,
-		Step = 1,
-		Default = 10,
-		Suffix = " studs",
-		Callback = function(value)
-			Settings.combat_kill_aura_range = value
-		end,
-	})
-
-	-- [LOGICA DO TIPO DE ATAQUE AQUI]
-	rightColumn:Dropdown({
-		Name = "Attack Type",
-		Flag = "CombatKillAuraAttackType",
-		Options = { "Power Attack", "Normal", "Heavy", "Light" },
-		Default = "Power Attack",
-		Callback = function(value)
-			Settings.combat_kill_aura_attack = value
-		end,
-	})
-
-	return combatTab
-end
-]==],
-	["tabs/players.lua"] = [==[-- =====================================================================
--- tabs/players.lua - aba PLAYERS
---
--- Layout do BBC Hub: DUAS COLUNAS lado a lado.
---   coluna esquerda : PLAYERS ESP
---   coluna direita  : ITEMS ESP + RADAR
---
--- A logica pesada fica em marcadores.
--- =====================================================================
-
-return function(ctx)
-	local window = ctx.window
-	local Settings = ctx.Settings
-
-	-- -----------------------------------------------------------------
-	-- ABA "PLAYERS" (icone "users")
-	-- -----------------------------------------------------------------
-	local playersTab = window:CreateTab({ Name = "PLAYERS" }, "users")
-
-	local leftColumn = playersTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
-	local rightColumn = playersTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
-
-	ctx.plainColumn(leftColumn)
-	ctx.plainColumn(rightColumn)
-
-	-- -----------------------------------------------------------------
-	-- COLUNA ESQUERDA
-	-- -----------------------------------------------------------------
-
-	-- SECCAO "PLAYERS ESP" -------------------------------------------
-	leftColumn:Section("PLAYERS ESP")
-
-	-- [LOGICA DO ESP DE JOGADORES AQUI]
-	leftColumn:Toggle({
-		Name = "Master",
-		Flag = "PlayersEspMaster",
-		Callback = function(value)
-			Settings.players_esp_master = value
-		end,
-	})
-
-	-- [LOGICA DAS CAIXAS AQUI]
-	leftColumn:Toggle({
-		Name = "Boxes",
-		Flag = "PlayersEspBoxes",
-		Callback = function(value)
-			Settings.players_esp_boxes = value
-		end,
-	})
-
-	-- [LOGICA DAS NAME TAGS AQUI]
-	leftColumn:Toggle({
-		Name = "Name Tags",
-		Flag = "PlayersEspNameTags",
-		Callback = function(value)
-			Settings.players_esp_name_tags = value
-		end,
-	})
-
-	-- [LOGICA DAS DISTANCE TAGS AQUI]
-	leftColumn:Toggle({
-		Name = "Distance Tags",
-		Flag = "PlayersEspDistanceTags",
-		Callback = function(value)
-			Settings.players_esp_distance_tags = value
-		end,
-	})
-
-	-- [LOGICA DAS HEALTH BARS AQUI]
-	leftColumn:Toggle({
-		Name = "Health Bars",
-		Flag = "PlayersEspHealthBars",
-		Callback = function(value)
-			Settings.players_esp_health_bars = value
-		end,
-	})
-
-	-- [LOGICA DO SKELETON AQUI]
-	leftColumn:Toggle({
-		Name = "Skeleton",
-		Flag = "PlayersEspSkeleton",
-		Callback = function(value)
-			Settings.players_esp_skeleton = value
-		end,
-	})
-
-	-- [LOGICA DAS SETAS AQUI]
-	leftColumn:Toggle({
-		Name = "Arrows",
-		Flag = "PlayersEspArrows",
-		Callback = function(value)
-			Settings.players_esp_arrows = value
-		end,
-	})
-
-	-- [LOGICA DOS TRACERS AQUI]
-	leftColumn:Toggle({
-		Name = "Tracers",
-		Flag = "PlayersEspTracers",
-		Callback = function(value)
-			Settings.players_esp_tracers = value
-		end,
-	})
-
-	-- [LOGICA DOS HIGHLIGHTS AQUI]
-	leftColumn:Toggle({
-		Name = "Highlights",
-		Flag = "PlayersEspHighlights",
-		Callback = function(value)
-			Settings.players_esp_highlights = value
-		end,
-	})
-
-	-- [LOGICA DAS REPORTS TAGS AQUI]
-	leftColumn:Toggle({
-		Name = "Reports Tags",
-		Flag = "PlayersEspReportsTags",
-		Callback = function(value)
-			Settings.players_esp_reports_tags = value
-		end,
-	})
-
-	-- -----------------------------------------------------------------
-	-- COLUNA DIREITA
-	-- -----------------------------------------------------------------
-
-	-- SECCAO "ITEMS ESP" ---------------------------------------------
-	rightColumn:Section("ITEMS ESP")
-
-	-- [LOGICA DO ESP DE NPCS AQUI]
-	rightColumn:Toggle({
-		Name = "NPCs ESP",
-		Flag = "PlayersEspNpcs",
-		Callback = function(value)
-			Settings.players_esp_npcs = value
-		end,
-	})
-
-	-- [LOGICA DO ESP DE CORPOS AQUI]
-	rightColumn:Toggle({
-		Name = "Corpses ESP",
-		Flag = "PlayersEspCorpses",
-		Callback = function(value)
-			Settings.players_esp_corpses = value
-		end,
-	})
-
-	-- [LOGICA DO ESP DE ITEMS LARADOS AQUI]
-	rightColumn:Toggle({
-		Name = "Dropped Items ESP",
-		Flag = "PlayersEspDroppedItems",
-		Callback = function(value)
-			Settings.players_esp_dropped_items = value
-		end,
-	})
-
-	-- [LOGICA DO ESP DE CONTAINERS (VAULTS) AQUI]
-	rightColumn:Toggle({
-		Name = "Containers ESP",
-		Flag = "PlayersEspContainers",
-		Callback = function(value)
-			Settings.players_esp_containers = value
-		end,
-	})
-
-	-- [LOGICA DO ESP DE QUESTS AQUI]
-	rightColumn:Toggle({
-		Name = "Quest Items ESP",
-		Flag = "PlayersEspQuestItems",
-		Callback = function(value)
-			Settings.players_esp_quest_items = value
-		end,
-	})
-
-	-- SECCAO "RADAR" -------------------------------------------------
-	rightColumn:Section("RADAR")
-
-	-- [LOGICA DO RADAR AQUI]
-	rightColumn:Toggle({
-		Name = "Radar",
-		Flag = "PlayersRadarEnabled",
-		Callback = function(value)
-			Settings.players_radar_enabled = value
-		end,
-	})
-
-	-- [LOGICA DO RADAR DE MAPA COMPLETO AQUI]
-	rightColumn:Toggle({
-		Name = "Full Map",
-		Flag = "PlayersRadarFullMap",
-		Callback = function(value)
-			Settings.players_radar_full_map = value
-		end,
-	})
-
-	-- [LOGICA DO RADAR SINCRONIZADO AQUI]
-	rightColumn:Toggle({
-		Name = "Sync Map",
-		Flag = "PlayersRadarSyncMap",
-		Callback = function(value)
-			Settings.players_radar_sync_map = value
-		end,
-	})
-
-	-- [LOGICA DA FORMA DO RADAR AQUI]
-	rightColumn:Dropdown({
-		Name = "Shape",
-		Flag = "PlayersRadarShape",
-		Options = { "Circle", "Square" },
-		Default = "Circle",
-		Callback = function(value)
-			Settings.players_radar_shape = value
-		end,
-	})
-
-	-- [LOGICA DO ZOOM DO RADAR AQUI]
-	rightColumn:Slider({
-		Name = "Zoom",
-		Flag = "PlayersRadarZoom",
-		Min = 1,
-		Max = 10,
-		Step = 1,
-		Default = 4,
-		Callback = function(value)
-			Settings.players_radar_zoom = value
-		end,
-	})
-
-	return playersTab
-end
-]==],
 	["tabs/visuals.lua"] = [==[-- =====================================================================
 -- tabs/visuals.lua - aba VISUALS
 --
@@ -683,12 +396,12 @@ end
 --   coluna esquerda : WORLD
 --   coluna direita  : PLAYER + CROSSHAIR
 --
--- A logica pesada fica em marcadores.
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
 	-- ABA "VISUALS" (icone "eye")
@@ -708,70 +421,180 @@ return function(ctx)
 	-- SECCAO "WORLD" -------------------------------------------------
 	leftColumn:Section("WORLD")
 
-	-- [LOGICA DO FULLBRIGHT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Fullbright",
 		Flag = "VisualsFullbright",
 		Callback = function(value)
-			Settings.visuals_fullbright = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Intensity",
+				Flag = "VisualsFullbrightIntensity",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO NO FOG AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "No Fog",
 		Flag = "VisualsNoFog",
 		Callback = function(value)
-			Settings.visuals_no_fog = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Fog End",
+				Flag = "VisualsNoFogEnd",
+				Min = 0,
+				Max = 1000,
+				Step = 10,
+				Default = 100,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO BLOOM AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Bloom",
 		Flag = "VisualsBloom",
 		Callback = function(value)
-			Settings.visuals_bloom = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Bloom Intensity",
+				Flag = "VisualsBloomIntensity",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 20,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA GRAMA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Grass",
 		Flag = "VisualsGrass",
 		Callback = function(value)
-			Settings.visuals_grass = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Grass State",
+				Flag = "VisualsGrassState",
+				Options = { "Keep", "Low", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS ARVORES AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Trees",
 		Flag = "VisualsTrees",
 		Callback = function(value)
-			Settings.visuals_trees = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Tree State",
+				Flag = "VisualsTreesState",
+				Options = { "Keep", "Low", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO TERRENO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Terrain",
 		Flag = "VisualsTerrain",
 		Callback = function(value)
-			Settings.visuals_terrain = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Detail",
+				Flag = "VisualsTerrainDetail",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA AGUA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Water",
 		Flag = "VisualsWater",
 		Callback = function(value)
-			Settings.visuals_water = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Water Style",
+				Flag = "VisualsWaterStyle",
+				Options = { "Keep", "Clear", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA HORA DO DIA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Slider({
 		Name = "Time of Day",
 		Flag = "VisualsTimeOfDay",
@@ -780,11 +603,12 @@ return function(ctx)
 		Step = 1,
 		Default = 14,
 		Callback = function(value)
-			Settings.visuals_time_of_day = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO BRILHO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Slider({
 		Name = "Brightness",
 		Flag = "VisualsBrightness",
@@ -793,7 +617,8 @@ return function(ctx)
 		Step = 1,
 		Default = 2,
 		Callback = function(value)
-			Settings.visuals_brightness = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
@@ -804,73 +629,189 @@ return function(ctx)
 	-- SECCAO "PLAYER" ------------------------------------------------
 	rightColumn:Section("PLAYER")
 
-	-- [LOGICA DOS CHAMS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Chams",
 		Flag = "VisualsChams",
 		Callback = function(value)
-			Settings.visuals_chams = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Chams Style",
+				Flag = "VisualsChamsStyle",
+				Options = { "Outline", "Fill", "Both" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Slider",
+				Name = "Chams Size",
+				Flag = "VisualsChamsSize",
+				Min = 0,
+				Max = 20,
+				Step = 1,
+				Default = 4,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO FORCE FIELD AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Force Field",
 		Flag = "VisualsForceField",
 		Callback = function(value)
-			Settings.visuals_force_field = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Hide Others",
+				Flag = "VisualsForceFieldHideOthers",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO HALO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Halo",
 		Flag = "VisualsHalo",
 		Callback = function(value)
-			Settings.visuals_halo = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Halo Size",
+				Flag = "VisualsHaloSize",
+				Min = 0,
+				Max = 20,
+				Step = 1,
+				Default = 6,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO TRAIL AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Trail",
 		Flag = "VisualsTrail",
 		Callback = function(value)
-			Settings.visuals_trail = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Trail Style",
+				Flag = "VisualsTrailStyle",
+				Options = { "Line", "Particle", "Both" },
+				Default = "Line",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO AURA AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Aura",
 		Flag = "VisualsAura",
 		Callback = function(value)
-			Settings.visuals_aura = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Aura Size",
+				Flag = "VisualsAuraSize",
+				Min = 0,
+				Max = 20,
+				Step = 1,
+				Default = 4,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO CHARACTER CHANGER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Character Changer",
 		Flag = "VisualsCharacterChanger",
 		Callback = function(value)
-			Settings.visuals_character_changer = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Body",
+				Flag = "VisualsCharacterBody",
+				Options = { "Default", "Blocky", "Pro", "Slim" },
+				Default = "Default",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "CROSSHAIR" ---------------------------------------------
 	rightColumn:Section("CROSSHAIR")
 
-	-- [LOGICA DO CROSSHAIR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Crosshair",
 		Flag = "VisualsCrosshair",
 		Callback = function(value)
-			Settings.visuals_crosshair = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Style",
+				Flag = "VisualsCrosshairStyle",
+				Options = { "Cross", "Dot", "Circle", "T" },
+				Default = "Cross",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO TAMANHO DO CROSSHAIR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Slider({
 		Name = "Size",
 		Flag = "VisualsCrosshairSize",
@@ -879,11 +820,12 @@ return function(ctx)
 		Step = 1,
 		Default = 10,
 		Callback = function(value)
-			Settings.visuals_crosshair_size = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DA ESPESSURA DO CROSSHAIR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Slider({
 		Name = "Thickness",
 		Flag = "VisualsCrosshairThickness",
@@ -892,29 +834,1414 @@ return function(ctx)
 		Step = 1,
 		Default = 2,
 		Callback = function(value)
-			Settings.visuals_crosshair_thickness = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO PONTO DO CROSSHAIR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Dot",
 		Flag = "VisualsCrosshairDot",
 		Callback = function(value)
-			Settings.visuals_crosshair_dot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Dot Size",
+				Flag = "VisualsCrosshairDotSize",
+				Min = 0,
+				Max = 20,
+				Step = 1,
+				Default = 3,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE ESCONDER O HUD AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Hide HUD",
 		Flag = "VisualsHideHud",
 		Callback = function(value)
-			Settings.visuals_hide_hud = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Hide Chat",
+				Flag = "VisualsHideHudChat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Hide Hotbar",
+				Flag = "VisualsHideHudHotbar",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	return visualsTab
+end
+]==],
+	["tabs/players.lua"] = [==[-- =====================================================================
+-- tabs/players.lua - aba PLAYER
+--
+-- Layout do BBC Hub: DUAS COLUNAS lado a lado.
+--   coluna esquerda : PLAYERS ESP
+--   coluna direita  : ITEMS ESP + RADAR
+--
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
+-- =====================================================================
+
+return function(ctx)
+	local window = ctx.window
+
+	-- -----------------------------------------------------------------
+	-- ABA "PLAYER" (icone "user")
+	-- -----------------------------------------------------------------
+	local playersTab = window:CreateTab({ Name = "PLAYER" }, "user")
+
+	local leftColumn = playersTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
+	local rightColumn = playersTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
+
+	ctx.plainColumn(leftColumn)
+	ctx.plainColumn(rightColumn)
+
+	-- -----------------------------------------------------------------
+	-- COLUNA ESQUERDA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "PLAYERS ESP" -------------------------------------------
+	leftColumn:Section("PLAYERS ESP")
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Master",
+		Flag = "PlayerEspMaster",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Max Distance",
+				Flag = "PlayerEspMaxDistance",
+				Min = 0,
+				Max = 2000,
+				Step = 10,
+				Default = 500,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Dropdown",
+				Name = "Team Filter",
+				Flag = "PlayerEspTeamFilter",
+				Options = { "All", "Team", "Enemy", "Other" },
+				Default = "All",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Boxes",
+		Flag = "PlayerEspBoxes",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Box Style",
+				Flag = "PlayerEspBoxStyle",
+				Options = { "Outline", "Corner", "Full" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Name Tags",
+		Flag = "PlayerEspNameTags",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tag Size",
+				Flag = "PlayerEspNameTagSize",
+				Min = 8,
+				Max = 32,
+				Step = 1,
+				Default = 14,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Distance Tags",
+		Flag = "PlayerEspDistanceTags",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tag Offset",
+				Flag = "PlayerEspDistanceTagOffset",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 20,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Health Bars",
+		Flag = "PlayerEspHealthBars",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Bar Style",
+				Flag = "PlayerEspHealthBarStyle",
+				Options = { "Left", "Right", "Bottom" },
+				Default = "Left",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Skeleton",
+		Flag = "PlayerEspSkeleton",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Head",
+				Flag = "PlayerEspSkeletonHead",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Arrows",
+		Flag = "PlayerEspArrows",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Arrow Position",
+				Flag = "PlayerEspArrowPosition",
+				Options = { "Above", "Below", "Side" },
+				Default = "Above",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Tracers",
+		Flag = "PlayerEspTracers",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tracer Thickness",
+				Flag = "PlayerEspTracerThickness",
+				Min = 1,
+				Max = 10,
+				Step = 1,
+				Default = 2,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Highlights",
+		Flag = "PlayerEspHighlights",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Highlight Style",
+				Flag = "PlayerEspHighlightStyle",
+				Options = { "Outline", "Fill", "Both" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Reports Tags",
+		Flag = "PlayerEspReportsTags",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Report Count",
+				Flag = "PlayerEspReportsCount",
+				Min = 1,
+				Max = 20,
+				Step = 1,
+				Default = 3,
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- -----------------------------------------------------------------
+	-- COLUNA DIREITA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "ITEMS ESP" ---------------------------------------------
+	rightColumn:Section("ITEMS ESP")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "NPCs ESP",
+		Flag = "PlayerEspNpcs",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "NPC Distance",
+				Flag = "PlayerEspNpcsDistance",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Corpses ESP",
+		Flag = "PlayerEspCorpses",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Name",
+				Flag = "PlayerEspCorpsesName",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Dropped Items ESP",
+		Flag = "PlayerEspDroppedItems",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Item Distance",
+				Flag = "PlayerEspDroppedItemsDistance",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Containers ESP",
+		Flag = "PlayerEspContainers",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Loot",
+				Flag = "PlayerEspContainersLoot",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Quest Items ESP",
+		Flag = "PlayerEspQuestItems",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Quest Type",
+				Flag = "PlayerEspQuestItemsType",
+				Options = { "All", "Active", "Daily", "Event" },
+				Default = "All",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- SECCAO "RADAR" -------------------------------------------------
+	rightColumn:Section("RADAR")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Radar",
+		Flag = "PlayerRadarEnabled",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Radar Size",
+				Flag = "PlayerRadarSize",
+				Min = 100,
+				Max = 600,
+				Step = 10,
+				Default = 240,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Full Map",
+		Flag = "PlayerRadarFullMap",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Grid",
+				Flag = "PlayerRadarFullMapGrid",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Sync Map",
+		Flag = "PlayerRadarSyncMap",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Sync Delay",
+				Flag = "PlayerRadarSyncMapDelay",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 10,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Dropdown({
+		Name = "Shape",
+		Flag = "PlayerRadarShape",
+		Options = { "Circle", "Square" },
+		Default = "Circle",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Slider({
+		Name = "Zoom",
+		Flag = "PlayerRadarZoom",
+		Min = 1,
+		Max = 10,
+		Step = 1,
+		Default = 4,
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	return playersTab
+end
+]==],
+	["tabs/combat.lua"] = [==[-- =====================================================================
+-- tabs/combat.lua - aba COMBAT
+--
+-- Layout do BBC Hub: DUAS COLUNAS lado a lado.
+--   coluna esquerda : AIM
+--   coluna direita  : GUN + TRIGGERBOT + KILL AURA
+--
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
+--
+-- O toggle traz um SUB MENU: o icone da esquerda (o "☰") vira um
+-- botao que abre uma caixa por baixo do toggle, com as opcoes extras.
+-- O painel cresce com a coluna, por isso a rolagem no telemóvel
+-- continua a funcionar.
+-- =====================================================================
+
+return function(ctx)
+	local window = ctx.window
+
+	-- -----------------------------------------------------------------
+	-- ABA "COMBAT" (icone "crosshair")
+	-- -----------------------------------------------------------------
+	local combatTab = window:CreateTab({ Name = "COMBAT" }, "crosshair")
+
+	local leftColumn = combatTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
+	local rightColumn = combatTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
+
+	ctx.plainColumn(leftColumn)
+	ctx.plainColumn(rightColumn)
+
+	-- -----------------------------------------------------------------
+	-- COLUNA ESQUERDA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "AIM" ---------------------------------------------------
+	leftColumn:Section("AIM")
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Silent Aim",
+		Flag = "CombatSilentAim",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Hit Chance",
+				Flag = "CombatSilentAimHitChance",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Dropdown",
+				Name = "Target Part",
+				Flag = "CombatSilentAimTargetPart",
+				Options = { "Head", "Torso", "Nearest" },
+				Default = "Head",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Aim FOV",
+		Flag = "CombatAimFov",
+		Min = 0,
+		Max = 720,
+		Step = 5,
+		Default = 120,
+		Suffix = " px",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Aimbot",
+		Flag = "CombatAimbot",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Smoothness",
+				Flag = "CombatAimbotSmoothness",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 30,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Prediction",
+				Flag = "CombatAimbotPrediction",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Auto Shoot",
+		Flag = "CombatAutoShoot",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Delay",
+				Flag = "CombatAutoShootDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 50,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Sticky Target",
+		Flag = "CombatStickyTarget",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Stick Delay",
+				Flag = "CombatStickyTargetDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Team Check",
+		Flag = "CombatTeamCheck",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Team Mode",
+				Flag = "CombatTeamCheckMode",
+				Options = { "Skip", "Ignore", "Block" },
+				Default = "Skip",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "FOV Circle",
+		Flag = "CombatFovCircle",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Circle Size",
+				Flag = "CombatFovCircleSize",
+				Min = 10,
+				Max = 720,
+				Step = 5,
+				Default = 120,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- -----------------------------------------------------------------
+	-- COLUNA DIREITA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "GUN" ---------------------------------------------------
+	rightColumn:Section("GUN")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "No Recoil",
+		Flag = "CombatNoRecoil",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Recoil Power",
+				Flag = "CombatNoRecoilPower",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 100,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Fire Rate",
+		Flag = "CombatFireRate",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Rate",
+				Flag = "CombatFireRateValue",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Auto Reload",
+		Flag = "CombatAutoReload",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Reload Delay",
+				Flag = "CombatAutoReloadDelay",
+				Min = 0,
+				Max = 1000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Fake Scope",
+		Flag = "CombatFakeScope",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Zoom",
+				Flag = "CombatFakeScopeZoom",
+				Min = 1,
+				Max = 10,
+				Step = 1,
+				Default = 3,
+				Suffix = " x",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Grenade Prediction",
+		Flag = "CombatGrenadePrediction",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Prediction Mode",
+				Flag = "CombatGrenadePredictionMode",
+				Options = { "Line", "Arc", "Both" },
+				Default = "Line",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- SECCAO "TRIGGERBOT" -------------------------------------------
+	rightColumn:Section("TRIGGERBOT")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Triggerbot",
+		Flag = "CombatTriggerbot",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Only ADS",
+				Flag = "CombatTriggerbotOnlyAds",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Slider",
+				Name = "Trigger Delay",
+				Flag = "CombatTriggerbotDelay",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 50,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Slider({
+		Name = "Triggerbot Distance",
+		Flag = "CombatTriggerbotDistance",
+		Min = 0,
+		Max = 1000,
+		Step = 10,
+		Default = 50,
+		Suffix = " px",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- SECCAO "KILL AURA" ---------------------------------------------
+	rightColumn:Section("KILL AURA")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Kill Aura",
+		Flag = "CombatKillAura",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Attack Type",
+				Flag = "CombatKillAuraAttackType",
+				Options = { "Power Attack", "Normal", "Heavy", "Light" },
+				Default = "Power Attack",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Slider",
+				Name = "Kill Aura Range",
+				Flag = "CombatKillAuraRange",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 10,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Dropdown({
+		Name = "Target Team",
+		Flag = "CombatKillAuraTargetTeam",
+		Options = { "Enemy", "Other", "All" },
+		Default = "Enemy",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	return combatTab
+end
+]==],
+	["tabs/world.lua"] = [==[-- =====================================================================
+-- tabs/world.lua - aba WORLD
+--
+-- Layout do BBC Hub: DUAS COLUNAS lado a lado.
+--   coluna esquerda : ENVIRONMENT + PHYSICS
+--   coluna direita  : WORLD + INTERACTION
+--
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
+-- =====================================================================
+
+return function(ctx)
+	local window = ctx.window
+
+	-- -----------------------------------------------------------------
+	-- ABA "WORLD" (icone "globe")
+	-- -----------------------------------------------------------------
+	local worldTab = window:CreateTab({ Name = "WORLD" }, "globe")
+
+	local leftColumn = worldTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
+	local rightColumn = worldTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
+
+	ctx.plainColumn(leftColumn)
+	ctx.plainColumn(rightColumn)
+
+	-- -----------------------------------------------------------------
+	-- COLUNA ESQUERDA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "ENVIRONMENT" -------------------------------------------
+	leftColumn:Section("ENVIRONMENT")
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Time of Day",
+		Flag = "WorldTimeOfDay",
+		Min = 0,
+		Max = 24,
+		Step = 1,
+		Default = 14,
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Dropdown({
+		Name = "Weather",
+		Flag = "WorldWeather",
+		Options = { "Clear", "Rain", "Storm", "Snow" },
+		Default = "Clear",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Brightness",
+		Flag = "WorldBrightness",
+		Min = 0,
+		Max = 5,
+		Step = 1,
+		Default = 2,
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Fog",
+		Flag = "WorldFog",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Fog Density",
+				Flag = "WorldFogDensity",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Clouds",
+		Flag = "WorldClouds",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Cloud Style",
+				Flag = "WorldCloudsStyle",
+				Options = { "Keep", "Light", "Heavy", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- SECCAO "PHYSICS" -----------------------------------------------
+	leftColumn:Section("PHYSICS")
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Gravity",
+		Flag = "WorldGravity",
+		Min = 0,
+		Max = 500,
+		Step = 5,
+		Default = 196,
+		Suffix = " studs/s",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Jump Power",
+		Flag = "WorldJumpPower",
+		Min = 0,
+		Max = 200,
+		Step = 1,
+		Default = 50,
+		Suffix = " studs",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Slider({
+		Name = "Walk Speed",
+		Flag = "WorldWalkSpeed",
+		Min = 0,
+		Max = 100,
+		Step = 1,
+		Default = 16,
+		Suffix = " studs/s",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Bunny Hop",
+		Flag = "WorldBunnyHop",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Hop Height",
+				Flag = "WorldBunnyHopHeight",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 20,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- -----------------------------------------------------------------
+	-- COLUNA DIREITA
+	-- -----------------------------------------------------------------
+
+	-- SECCAO "WORLD" -------------------------------------------------
+	rightColumn:Section("WORLD")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Doors",
+		Flag = "WorldDoors",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Door State",
+				Flag = "WorldDoorsState",
+				Options = { "Keep", "Open", "Closed", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Windows",
+		Flag = "WorldWindows",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Window State",
+				Flag = "WorldWindowsState",
+				Options = { "Keep", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Props",
+		Flag = "WorldProps",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Prop State",
+				Flag = "WorldPropsState",
+				Options = { "Keep", "Remove" },
+				Default = "Keep",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Vehicles",
+		Flag = "WorldVehicles",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Name",
+				Flag = "WorldVehiclesName",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- SECCAO "INTERACTION" -------------------------------------------
+	rightColumn:Section("INTERACTION")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Auto Open",
+		Flag = "WorldAutoOpen",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Open Delay",
+				Flag = "WorldAutoOpenDelay",
+				Min = 0,
+				Max = 2000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Auto Close",
+		Flag = "WorldAutoClose",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Close Delay",
+				Flag = "WorldAutoCloseDelay",
+				Min = 0,
+				Max = 5000,
+				Step = 10,
+				Default = 1000,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Slider({
+		Name = "Interact Distance",
+		Flag = "WorldInteractDistance",
+		Min = 0,
+		Max = 100,
+		Step = 1,
+		Default = 10,
+		Suffix = " studs",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	return worldTab
 end
 ]==],
 	["tabs/misc.lua"] = [==[-- =====================================================================
@@ -925,18 +2252,17 @@ end
 --   coluna direita  : DETECT (4 toggles) + VAULT SORT (3 toggles)
 --                      + INVENTORY VIEWER (1 botao)
 --
--- O modulo devolve uma funcao que recebe o contexto (ctx) e constroi a
--- aba. A logica pesada fica em marcadores.
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
-	-- ABA "MISC" (icone "settings")
+	-- ABA "MISC" (icone "grid")
 	-- -----------------------------------------------------------------
-	local miscTab = window:CreateTab({ Name = "MISC" }, "settings")
+	local miscTab = window:CreateTab({ Name = "MISC" }, "grid")
 
 	-- DUAS COLUNAS LADO A LADO
 	local leftColumn = miscTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
@@ -952,89 +2278,205 @@ return function(ctx)
 	-- SECCAO "MISC" --------------------------------------------------
 	leftColumn:Section("MISC")
 
-	-- [LOGICA FAST TRADE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Fast Trade",
 		Flag = "MiscFastTrade",
 		Callback = function(value)
-			Settings.misc_fast_trade = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Trade Delay",
+				Flag = "MiscFastTradeDelay",
+				Min = 0,
+				Max = 1000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA PANIC MODE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Panic Mode",
 		Flag = "MiscPanicMode",
 		Callback = function(value)
-			Settings.misc_panic_mode = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Panic Action",
+				Flag = "MiscPanicModeAction",
+				Options = { "Close Menu", "Hide HUD", "Reset" },
+				Default = "Close Menu",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA PASS DOOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Pass Door",
 		Flag = "MiscPassDoor",
 		Callback = function(value)
-			Settings.misc_pass_door = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Auto Open",
+				Flag = "MiscPassDoorAutoOpen",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA SCREEN EFFECTS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Screen Effects",
 		Flag = "MiscScreenEffects",
 		Callback = function(value)
-			Settings.misc_screen_effects = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Effect",
+				Flag = "MiscScreenEffectsType",
+				Options = { "None", "Blur", "Vignette", "Flash" },
+				Default = "None",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA REPORT NOTIFY AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Report Notify",
 		Flag = "MiscReportNotify",
 		Callback = function(value)
-			Settings.misc_report_notify = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Sound",
+				Flag = "MiscReportNotifySound",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA JOIN NOTIFY AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Join Notify",
 		Flag = "MiscJoinNotify",
 		Callback = function(value)
-			Settings.misc_join_notify = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Sound",
+				Flag = "MiscJoinNotifySound",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "SOUNDS" ------------------------------------------------
 	leftColumn:Section("SOUNDS")
 
-	-- [LOGICA DO SOUND ID AQUI]
-	local soundId = leftColumn:Input({
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Input({
 		Name = "Add Sound ID",
 		Placeholder = "Sound ID",
 		Flag = "MiscSoundId",
 		Callback = function(value)
-			Settings.misc_sound_id = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO SOM DE PULO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Jump",
 		Flag = "MiscJumpSound",
 		Callback = function(value)
-			Settings.misc_jump_sound = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Volume",
+				Flag = "MiscJumpSoundVolume",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DOS PASSOS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Footsteps",
 		Flag = "MiscFootstepsSound",
 		Callback = function(value)
-			Settings.misc_footsteps_sound = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Volume",
+				Flag = "MiscFootstepsSoundVolume",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- -----------------------------------------------------------------
@@ -1044,107 +2486,206 @@ return function(ctx)
 	-- SECCAO "DETECT" ------------------------------------------------
 	rightColumn:Section("DETECT")
 
-	-- [LOGICA DE DETECTAR CONTENT CREATOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Content Creator",
 		Flag = "MiscDetectContentCreator",
 		Callback = function(value)
-			Settings.misc_detect_content_creator = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectContentCreatorStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR TESTER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Tester",
 		Flag = "MiscDetectTester",
 		Callback = function(value)
-			Settings.misc_detect_tester = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectTesterStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR MODERADOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Moderator",
 		Flag = "MiscDetectModerator",
 		Callback = function(value)
-			Settings.misc_detect_moderator = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectModeratorStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR CHEATER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Cheater",
 		Flag = "MiscDetectCheater",
 		Callback = function(value)
-			Settings.misc_detect_cheater = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectCheaterStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "VAULT SORT" --------------------------------------------
 	rightColumn:Section("VAULT SORT")
 
-	-- [LOGICA DE ORDENAR POR VALOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Value",
 		Flag = "MiscSortByValue",
 		Callback = function(value)
-			Settings.misc_sort_by_value = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByValueOrder",
+				Options = { "High to Low", "Low to High" },
+				Default = "High to Low",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE ORDENAR POR TIPO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Type",
 		Flag = "MiscSortByType",
 		Callback = function(value)
-			Settings.misc_sort_by_type = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByTypeOrder",
+				Options = { "A to Z", "Z to A" },
+				Default = "A to Z",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE ORDENAR POR NOME AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Name",
 		Flag = "MiscSortByName",
 		Callback = function(value)
-			Settings.misc_sort_by_name = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByNameOrder",
+				Options = { "A to Z", "Z to A" },
+				Default = "A to Z",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "INVENTORY VIEWER" -------------------------------------
 	rightColumn:Section("INVENTORY VIEWER")
 
-	-- [LOGICA DO INVENTORY VIEWER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Button({
 		Name = "Show Inventory",
 		Callback = function()
-			print("[Airflow] Show Inventory")
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
 	return miscTab
 end
 ]==],
-	["tabs/utility.lua"] = [==[-- =====================================================================
--- tabs/utility.lua - aba UTILITY
+	["tabs/lootfinder.lua"] = [==[-- =====================================================================
+-- tabs/lootfinder.lua - aba LOOTFINDER
 --
 -- Layout do BBC Hub: DUAS COLUNAS lado a lado.
---   coluna esquerda : LOOT
---   coluna direita  : MOVEMENT + FREECAM + BOSS CHECKER
+--   coluna esquerda : LOOT (toggles + slider de distancia)
+--   coluna direita  : FILTERS (dropdowns) + NOTIFY (toggles)
 --
--- A logica pesada fica em marcadores.
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
-	-- ABA "UTILITY" (icone "wrench")
+	-- ABA "LOOTFINDER" (icone "search")
 	-- -----------------------------------------------------------------
-	local utilityTab = window:CreateTab({ Name = "UTILITY" }, "wrench")
+	local lootTab = window:CreateTab({ Name = "LOOTFINDER" }, "search")
 
-	local leftColumn = utilityTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
-	local rightColumn = utilityTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
+	local leftColumn = lootTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
+	local rightColumn = lootTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
 
 	ctx.plainColumn(leftColumn)
 	ctx.plainColumn(rightColumn)
@@ -1153,77 +2694,113 @@ return function(ctx)
 	-- COLUNA ESQUERDA
 	-- -----------------------------------------------------------------
 
-	-- SECCAO "LOOT" --------------------------------------------------
+	-- SECCAO "LOOT" ---------------------------------------------------
 	leftColumn:Section("LOOT")
 
-	-- [LOGICA DO AUTO LOOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
-		Name = "Auto Loot",
-		Flag = "UtilityAutoLoot",
+		Name = "Loot ESP",
+		Flag = "LootLootEsp",
 		Callback = function(value)
-			Settings.utility_auto_loot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Box",
+				Flag = "LootLootEspBox",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Name",
+				Flag = "LootLootEspName",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Distance",
+				Flag = "LootLootEspDistance",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO INSTA LOOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
-		Name = "Insta Loot",
-		Flag = "UtilityInstaLoot",
+		Name = "Loot Highlight",
+		Flag = "LootHighlight",
 		Callback = function(value)
-			Settings.utility_insta_loot = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Style",
+				Flag = "LootHighlightStyle",
+				Options = { "Outline", "Fill", "Text" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO LOOT FINDER AQUI]
-	leftColumn:Toggle({
-		Name = "Loot Finder",
-		Flag = "UtilityLootFinder",
-		Callback = function(value)
-			Settings.utility_loot_finder = value
-		end,
-	})
-
-	-- [LOGICA DO MAG FINDER AQUI]
-	leftColumn:Toggle({
-		Name = "Mag Finder",
-		Flag = "UtilityMagFinder",
-		Callback = function(value)
-			Settings.utility_mag_finder = value
-		end,
-	})
-
-	-- [LOGICA DE SUBSTITUIR POR MAIS BARATO AQUI]
-	leftColumn:Toggle({
-		Name = "Replace Cheaper",
-		Flag = "UtilityReplaceCheaper",
-		Callback = function(value)
-			Settings.utility_replace_cheaper = value
-		end,
-	})
-
-	-- [LOGICA DE PEGAR ITEMS LARADOS AQUI]
-	leftColumn:Toggle({
-		Name = "Pick Up Dropped",
-		Flag = "UtilityPickUpDropped",
-		Callback = function(value)
-			Settings.utility_pick_up_dropped = value
-		end,
-	})
-
-	-- SECCAO "LOOT RANGE" --------------------------------------------
-	leftColumn:Section("LOOT RANGE")
-
-	-- [LOGICA DO RAIO DO AUTO LOOT AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Slider({
-		Name = "Loot Radius",
-		Flag = "UtilityLootRadius",
+		Name = "Loot Range",
+		Flag = "LootRange",
 		Min = 0,
-		Max = 100,
-		Step = 1,
-		Default = 10,
+		Max = 500,
+		Step = 5,
+		Default = 100,
 		Suffix = " studs",
 		Callback = function(value)
-			Settings.utility_loot_radius = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Chests",
+		Flag = "LootChests",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Opened",
+				Flag = "LootChestsShowOpened",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Button({
+		Name = "Refresh Loot",
+		Callback = function()
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
@@ -1231,144 +2808,146 @@ return function(ctx)
 	-- COLUNA DIREITA
 	-- -----------------------------------------------------------------
 
-	-- SECCAO "MOVEMENT" ----------------------------------------------
-	rightColumn:Section("MOVEMENT")
+	-- SECCAO "FILTERS" ------------------------------------------------
+	rightColumn:Section("FILTERS")
 
-	-- [LOGICA DO ALWAYS SPRINT AQUI]
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Dropdown({
+		Name = "Rarity",
+		Flag = "LootFilterRarity",
+		Options = { "All", "Common", "Rare", "Epic", "Legendary" },
+		Default = "All",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Dropdown({
+		Name = "Item Type",
+		Flag = "LootFilterType",
+		Options = { "All", "Weapons", "Armor", "Items", "Keys" },
+		Default = "All",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Input({
+		Name = "Item Name",
+		Placeholder = "Search item",
+		Flag = "LootFilterName",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
-		Name = "Always Sprint",
-		Flag = "UtilityAlwaysSprint",
+		Name = "Hide Empty",
+		Flag = "LootHideEmpty",
 		Callback = function(value)
-			Settings.utility_always_sprint = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Delay",
+				Flag = "LootHideEmptyDelay",
+				Min = 0,
+				Max = 2000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO SPEEDHACK AQUI]
+	-- SECCAO "NOTIFY" -------------------------------------------------
+	rightColumn:Section("NOTIFY")
+
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
-		Name = "Speedhack",
-		Flag = "UtilitySpeedhack",
+		Name = "Rare Notify",
+		Flag = "LootRareNotify",
 		Callback = function(value)
-			Settings.utility_speedhack = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "LootRareNotifyStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO MULTIPLICADOR DO SPEEDHACK AQUI]
-	rightColumn:Slider({
-		Name = "Speed Multiplier",
-		Flag = "UtilitySpeedMultiplier",
-		Min = 1,
-		Max = 5,
-		Step = 0.1,
-		Default = 1.3,
-		Callback = function(value)
-			Settings.utility_speed_multiplier = value
-		end,
-	})
-
-	-- [LOGICA DO NO FALL AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
-		Name = "No Fall",
-		Flag = "UtilityNoFall",
+		Name = "Loot Sound",
+		Flag = "LootSound",
 		Callback = function(value)
-			Settings.utility_no_fall = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Volume",
+				Flag = "LootSoundVolume",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO JESUS AQUI]
-	rightColumn:Toggle({
-		Name = "Jesus",
-		Flag = "UtilityJesus",
-		Callback = function(value)
-			Settings.utility_jesus = value
-		end,
-	})
-
-	-- SECCAO "FREECAM" -----------------------------------------------
-	rightColumn:Section("FREECAM")
-
-	-- [LOGICA DA FREECAM AQUI]
-	rightColumn:Toggle({
-		Name = "Freecam",
-		Flag = "UtilityFreecam",
-		Callback = function(value)
-			Settings.utility_freecam = value
-		end,
-	})
-
-	-- [LOGICA DA VELOCIDADE DA FREECAM AQUI]
-	rightColumn:Slider({
-		Name = "Freecam Speed",
-		Flag = "UtilityFreecamSpeed",
-		Min = 1,
-		Max = 500,
-		Step = 1,
-		Default = 50,
-		Callback = function(value)
-			Settings.utility_freecam_speed = value
-		end,
-	})
-
-	-- [LOGICA DO MODO CINEMATICO AQUI]
-	rightColumn:Toggle({
-		Name = "Cinematic",
-		Flag = "UtilityFreecamCinematic",
-		Callback = function(value)
-			Settings.utility_freecam_cinematic = value
-		end,
-	})
-
-	-- SECCAO "BOSS CHECKER" ------------------------------------------
-	rightColumn:Section("BOSS CHECKER")
-
-	-- [LOGICA DO BOSS CHECKER AQUI]
-	rightColumn:Toggle({
-		Name = "Boss Checker",
-		Flag = "UtilityBossChecker",
-		Callback = function(value)
-			Settings.utility_boss_checker = value
-		end,
-	})
-
-	-- [LOGICA DO INTERVALO DO BOSS CHECKER AQUI]
-	rightColumn:Slider({
-		Name = "Check Interval",
-		Flag = "UtilityBossCheckerInterval",
-		Min = 1,
-		Max = 60,
-		Step = 1,
-		Default = 5,
-		Suffix = " s",
-		Callback = function(value)
-			Settings.utility_boss_checker_interval = value
-		end,
-	})
-
-	return utilityTab
+	return lootTab
 end
 ]==],
-	["tabs/settings.lua"] = [==[-- =====================================================================
--- tabs/settings.lua - aba SETTINGS
+	["tabs/server.lua"] = [==[-- =====================================================================
+-- tabs/server.lua - aba SERVER
 --
 -- Layout do BBC Hub: DUAS COLUNAS lado a lado.
---   coluna esquerda : UI
---   coluna direita  : KEYBINDS + CONFIG
+--   coluna esquerda : SERVER (botoes e informacao do servidor)
+--   coluna direita  : HOPPER (troca de servidor) + MISC (opcoes)
 --
--- Esta aba e a unica que mexe no proprio menu: a libraria sabe
--- repintar-se sozinha quando o tema muda (Library:SetTheme).
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Library = ctx.Library
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
-	-- ABA "SETTINGS" (icone "sliders")
+	-- ABA "SERVER" (icone "server")
 	-- -----------------------------------------------------------------
-	local settingsTab = window:CreateTab({ Name = "SETTINGS" }, "sliders")
+	local serverTab = window:CreateTab({ Name = "SERVER" }, "server")
 
-	local leftColumn = settingsTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
-	local rightColumn = settingsTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
+	local leftColumn = serverTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
+	local rightColumn = serverTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
 
 	ctx.plainColumn(leftColumn)
 	ctx.plainColumn(rightColumn)
@@ -1377,129 +2956,191 @@ return function(ctx)
 	-- COLUNA ESQUERDA
 	-- -----------------------------------------------------------------
 
-	-- SECCAO "UI" ----------------------------------------------------
-	leftColumn:Section("UI")
+	-- SECCAO "SERVER" -------------------------------------------------
+	leftColumn:Section("SERVER")
 
-	-- [LOGICA DA MUDANCA DE TEMA AQUI]
-	leftColumn:Dropdown({
-		Name = "Theme",
-		Flag = "SettingsTheme",
-		Options = {
-			"Midnight",
-			"Ocean",
-			"Rose",
-			"Emerald",
-			"Nebula",
-			"Synthwave",
-			"Toxic",
-			"Aurora",
-			"Frost",
-			"Dracula",
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Button({
+		Name = "Copy Server Link",
+		Callback = function()
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Button({
+		Name = "Rejoin Server",
+		Callback = function()
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Toggle({
+		Name = "Auto Rejoin",
+		Flag = "ServerAutoRejoin",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Delay",
+				Flag = "ServerAutoRejoinDelay",
+				Min = 0,
+				Max = 10000,
+				Step = 100,
+				Default = 1000,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
 		},
-		Default = "Nebula",
-		Callback = function(value)
-			Settings.settings_theme = value
-			local preset = Library.ThemePresets and Library.ThemePresets[value]
-			if preset then
-				Library:SetTheme(preset, false)
-			end
-		end,
 	})
 
-	-- [LOGICA DA COR DE ACCENT AQUI]
-	leftColumn:ColorPicker({
-		Name = "Accent Color",
-		Flag = "SettingsAccent",
-		Default = Color3.fromRGB(170, 80, 255),
-		Callback = function(color)
-			Settings.settings_accent = color
-			local current = Library.Theme and Library.Theme.Accent
-			if current and typeof(current) == "Color3" then
-				Library:SetTheme({ Accent = color }, false)
-			end
-		end,
-	})
-
-	-- [LOGICA DAS ANIMACOES AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
-		Name = "Animations",
-		Flag = "SettingsAnimations",
-		Default = true,
+		Name = "Teleport To Spawn",
+		Flag = "ServerTeleportSpawn",
 		Callback = function(value)
-			Settings.settings_animations = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
-	})
-
-	-- [LOGICA DA WATERMARK AQUI]
-	-- Liga/desliga a marca do topo da tela (a que mostra o relogio).
-	leftColumn:Toggle({
-		Name = "Watermark",
-		Flag = "SettingsWatermark",
-		Default = true,
-		Callback = function(value)
-			Settings.settings_watermark = value
-			local mark = ctx.watermark
-			if mark then
-				mark:SetVisible(value)
-			end
-		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Safe Spot",
+				Flag = "ServerTeleportSpawnSafe",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- -----------------------------------------------------------------
 	-- COLUNA DIREITA
 	-- -----------------------------------------------------------------
 
-	-- SECCAO "KEYBINDS" ----------------------------------------------
-	rightColumn:Section("KEYBINDS")
+	-- SECCAO "HOPPER" ------------------------------------------------
+	rightColumn:Section("HOPPER")
 
-	-- [LOGICA DO KEYBIND DO MENU AQUI]
-	rightColumn:Keybind({
-		Name = "Toggle UI",
-		Flag = "SettingsToggleUiKeybind",
-		Default = "RightControl",
-		Callback = function(keyCode)
-			Settings.settings_toggle_ui_keybind = keyCode
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Button({
+		Name = "Server Hop",
+		Callback = function()
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DA LISTA DE KEYBINDS AQUI]
-	rightColumn:Toggle({
-		Name = "Show Keybind List",
-		Flag = "SettingsKeybindList",
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Button({
+		Name = "Random Server",
+		Callback = function()
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Input({
+		Name = "Join Code",
+		Placeholder = "Server code",
+		Flag = "ServerJoinCode",
 		Callback = function(value)
-			Settings.settings_keybind_list = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- SECCAO "CONFIG" ------------------------------------------------
-	rightColumn:Section("CONFIG")
-
-	-- [LOGICA DE GUARDAR/LER/APAGAR A CONFIG AQUI]
-	rightColumn:ButtonRow({
-		Buttons = {
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Low Ping Only",
+		Flag = "ServerLowPing",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
 			{
-				Name = "Save",
-				Callback = function()
-					print("[Airflow] config guardada")
-				end,
-			},
-			{
-				Name = "Load",
-				Callback = function()
-					print("[Airflow] config lida")
-				end,
-			},
-			{
-				Name = "Reset",
-				Style = "Danger",
-				Callback = function()
-					print("[Airflow] config reposta")
+				Type = "Slider",
+				Name = "Max Ping",
+				Flag = "ServerLowPingMax",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
 				end,
 			},
 		},
 	})
 
-	return settingsTab
+	-- SECCAO "MISC" ---------------------------------------------------
+	rightColumn:Section("MISC")
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Server Notifications",
+		Flag = "ServerNotifications",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Sound",
+				Flag = "ServerNotificationsSound",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	-- [INSERIR LOGICA AQUI]
+	rightColumn:Toggle({
+		Name = "Hide Server HUD",
+		Flag = "ServerHideHud",
+		Callback = function(value)
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
+		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Hide Chat",
+				Flag = "ServerHideHudChat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Toggle",
+				Name = "Hide Hotbar",
+				Flag = "ServerHideHudHotbar",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
+	})
+
+	return serverTab
 end
 ]==],
 }
@@ -1538,19 +3179,24 @@ end
 
 print("[Airflow] pronto: " .. tostring(loaded) .. "/" .. tostring(#TABS) .. " abas")
 
--- Fundo Hexagonal
-task.spawn(function()
-    task.wait(1)
-    if Window and Window.Main then
-        local HexBg = Instance.new("ImageLabel")
-        HexBg.Parent = Window.Main
-        HexBg.Size = UDim2.new(1, 0, 1, 0)
-        HexBg.BackgroundTransparency = 1
-        HexBg.Image = "rbxassetid://12629542321"
-        HexBg.ScaleType = Enum.ScaleType.Tile
-        HexBg.TileSize = UDim2.new(0, 50, 0, 50)
-        HexBg.ImageColor3 = Color3.fromRGB(20, 20, 20)
-        HexBg.ImageTransparency = 0.8
-        HexBg.ZIndex = -1
-    end
-end)
+-- ---------------------------------------------------------------------
+-- 9. ROLAGEM DAS ABAS
+--
+-- O conteudo de cada aba vive num ScrollingFrame: a barra de rolagem
+-- fica com 4 px (fina, como no BBC Hub) e o canvas segue o conteudo,
+-- para a ultima linha nunca ficar presa.
+-- ---------------------------------------------------------------------
+for _, tab in ipairs(window.Tabs or {}) do
+	local list = tab.List
+	if list and list:IsA("ScrollingFrame") then
+		list.ScrollBarThickness = 4
+		list.ScrollBarImageColor3 = DARK_THEME.Muted
+		list.ScrollBarImageTransparency = 0.55
+		-- A biblioteca calcula o canvas a medida que o conteudo muda
+		-- (quando um sub menu abre). Pedimos um novo calculo para o
+		-- canvas ficar certo desde o inicio.
+		if type(tab._refreshCanvas) == "function" then
+			pcall(tab._refreshCanvas)
+		end
+	end
+end

@@ -1,21 +1,21 @@
 -- =====================================================================
--- tabs/players.lua - aba PLAYERS
+-- tabs/players.lua - aba PLAYER
 --
 -- Layout do BBC Hub: DUAS COLUNAS lado a lado.
 --   coluna esquerda : PLAYERS ESP
 --   coluna direita  : ITEMS ESP + RADAR
 --
--- A logica pesada fica em marcadores.
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
-	-- ABA "PLAYERS" (icone "users")
+	-- ABA "PLAYER" (icone "user")
 	-- -----------------------------------------------------------------
-	local playersTab = window:CreateTab({ Name = "PLAYERS" }, "users")
+	local playersTab = window:CreateTab({ Name = "PLAYER" }, "user")
 
 	local leftColumn = playersTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
 	local rightColumn = playersTab:Groupbox({ Name = "", Side = "Right", PopOut = false })
@@ -30,94 +30,257 @@ return function(ctx)
 	-- SECCAO "PLAYERS ESP" -------------------------------------------
 	leftColumn:Section("PLAYERS ESP")
 
-	-- [LOGICA DO ESP DE JOGADORES AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Master",
-		Flag = "PlayersEspMaster",
+		Flag = "PlayerEspMaster",
 		Callback = function(value)
-			Settings.players_esp_master = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Max Distance",
+				Flag = "PlayerEspMaxDistance",
+				Min = 0,
+				Max = 2000,
+				Step = 10,
+				Default = 500,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+			{
+				Type = "Dropdown",
+				Name = "Team Filter",
+				Flag = "PlayerEspTeamFilter",
+				Options = { "All", "Team", "Enemy", "Other" },
+				Default = "All",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS CAIXAS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Boxes",
-		Flag = "PlayersEspBoxes",
+		Flag = "PlayerEspBoxes",
 		Callback = function(value)
-			Settings.players_esp_boxes = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Box Style",
+				Flag = "PlayerEspBoxStyle",
+				Options = { "Outline", "Corner", "Full" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS NAME TAGS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Name Tags",
-		Flag = "PlayersEspNameTags",
+		Flag = "PlayerEspNameTags",
 		Callback = function(value)
-			Settings.players_esp_name_tags = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tag Size",
+				Flag = "PlayerEspNameTagSize",
+				Min = 8,
+				Max = 32,
+				Step = 1,
+				Default = 14,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS DISTANCE TAGS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Distance Tags",
-		Flag = "PlayersEspDistanceTags",
+		Flag = "PlayerEspDistanceTags",
 		Callback = function(value)
-			Settings.players_esp_distance_tags = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tag Offset",
+				Flag = "PlayerEspDistanceTagOffset",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 20,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS HEALTH BARS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Health Bars",
-		Flag = "PlayersEspHealthBars",
+		Flag = "PlayerEspHealthBars",
 		Callback = function(value)
-			Settings.players_esp_health_bars = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Bar Style",
+				Flag = "PlayerEspHealthBarStyle",
+				Options = { "Left", "Right", "Bottom" },
+				Default = "Left",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO SKELETON AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Skeleton",
-		Flag = "PlayersEspSkeleton",
+		Flag = "PlayerEspSkeleton",
 		Callback = function(value)
-			Settings.players_esp_skeleton = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Head",
+				Flag = "PlayerEspSkeletonHead",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS SETAS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Arrows",
-		Flag = "PlayersEspArrows",
+		Flag = "PlayerEspArrows",
 		Callback = function(value)
-			Settings.players_esp_arrows = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Arrow Position",
+				Flag = "PlayerEspArrowPosition",
+				Options = { "Above", "Below", "Side" },
+				Default = "Above",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DOS TRACERS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Tracers",
-		Flag = "PlayersEspTracers",
+		Flag = "PlayerEspTracers",
 		Callback = function(value)
-			Settings.players_esp_tracers = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Tracer Thickness",
+				Flag = "PlayerEspTracerThickness",
+				Min = 1,
+				Max = 10,
+				Step = 1,
+				Default = 2,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DOS HIGHLIGHTS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Highlights",
-		Flag = "PlayersEspHighlights",
+		Flag = "PlayerEspHighlights",
 		Callback = function(value)
-			Settings.players_esp_highlights = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Highlight Style",
+				Flag = "PlayerEspHighlightStyle",
+				Options = { "Outline", "Fill", "Both" },
+				Default = "Outline",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DAS REPORTS TAGS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Reports Tags",
-		Flag = "PlayersEspReportsTags",
+		Flag = "PlayerEspReportsTags",
 		Callback = function(value)
-			Settings.players_esp_reports_tags = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Report Count",
+				Flag = "PlayerEspReportsCount",
+				Min = 1,
+				Max = 20,
+				Step = 1,
+				Default = 3,
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- -----------------------------------------------------------------
@@ -127,102 +290,222 @@ return function(ctx)
 	-- SECCAO "ITEMS ESP" ---------------------------------------------
 	rightColumn:Section("ITEMS ESP")
 
-	-- [LOGICA DO ESP DE NPCS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "NPCs ESP",
-		Flag = "PlayersEspNpcs",
+		Flag = "PlayerEspNpcs",
 		Callback = function(value)
-			Settings.players_esp_npcs = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "NPC Distance",
+				Flag = "PlayerEspNpcsDistance",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO ESP DE CORPOS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Corpses ESP",
-		Flag = "PlayersEspCorpses",
+		Flag = "PlayerEspCorpses",
 		Callback = function(value)
-			Settings.players_esp_corpses = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Name",
+				Flag = "PlayerEspCorpsesName",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO ESP DE ITEMS LARADOS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Dropped Items ESP",
-		Flag = "PlayersEspDroppedItems",
+		Flag = "PlayerEspDroppedItems",
 		Callback = function(value)
-			Settings.players_esp_dropped_items = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Item Distance",
+				Flag = "PlayerEspDroppedItemsDistance",
+				Min = 0,
+				Max = 500,
+				Step = 10,
+				Default = 100,
+				Suffix = " studs",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO ESP DE CONTAINERS (VAULTS) AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Containers ESP",
-		Flag = "PlayersEspContainers",
+		Flag = "PlayerEspContainers",
 		Callback = function(value)
-			Settings.players_esp_containers = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Loot",
+				Flag = "PlayerEspContainersLoot",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO ESP DE QUESTS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Quest Items ESP",
-		Flag = "PlayersEspQuestItems",
+		Flag = "PlayerEspQuestItems",
 		Callback = function(value)
-			Settings.players_esp_quest_items = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Quest Type",
+				Flag = "PlayerEspQuestItemsType",
+				Options = { "All", "Active", "Daily", "Event" },
+				Default = "All",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "RADAR" -------------------------------------------------
 	rightColumn:Section("RADAR")
 
-	-- [LOGICA DO RADAR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Radar",
-		Flag = "PlayersRadarEnabled",
+		Flag = "PlayerRadarEnabled",
 		Callback = function(value)
-			Settings.players_radar_enabled = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Radar Size",
+				Flag = "PlayerRadarSize",
+				Min = 100,
+				Max = 600,
+				Step = 10,
+				Default = 240,
+				Suffix = " px",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO RADAR DE MAPA COMPLETO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Full Map",
-		Flag = "PlayersRadarFullMap",
+		Flag = "PlayerRadarFullMap",
 		Callback = function(value)
-			Settings.players_radar_full_map = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Show Grid",
+				Flag = "PlayerRadarFullMapGrid",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DO RADAR SINCRONIZADO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sync Map",
-		Flag = "PlayersRadarSyncMap",
+		Flag = "PlayerRadarSyncMap",
 		Callback = function(value)
-			Settings.players_radar_sync_map = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Sync Delay",
+				Flag = "PlayerRadarSyncMapDelay",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 10,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DA FORMA DO RADAR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Dropdown({
 		Name = "Shape",
-		Flag = "PlayersRadarShape",
+		Flag = "PlayerRadarShape",
 		Options = { "Circle", "Square" },
 		Default = "Circle",
 		Callback = function(value)
-			Settings.players_radar_shape = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO ZOOM DO RADAR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Slider({
 		Name = "Zoom",
-		Flag = "PlayersRadarZoom",
+		Flag = "PlayerRadarZoom",
 		Min = 1,
 		Max = 10,
 		Step = 1,
 		Default = 4,
 		Callback = function(value)
-			Settings.players_radar_zoom = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 

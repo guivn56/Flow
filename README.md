@@ -16,7 +16,7 @@ e de **mobile** (Delta, Arceus, Hydrogen, Solara).
 https://raw.githubusercontent.com/guivn56/Flow/main/dist/airflowui.lua
 ```
 
-Um ficheiro, sem `require`, sem a pasta `tabs/` no telemóvel: as 6 abas
+Um ficheiro, sem `require`, sem a pasta `tabs/` no telemóvel: as 7 abas
 vao embutidas. A biblioteca é buscada na internet com `game:HttpGet`
 (da RAW do GitHub), por isso já não precisa do ficheiro
 `/sdcard/Download/AirFlowLibrary.luau` no telemóvel:
@@ -27,8 +27,8 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/guivn
 
 | | |
 |---|---|
-| tamanho | 39 185 bytes |
-| sha256 | `b3e578f996dafa113b83744430131a8ca86e0581313913da84c5f1d76ba99618` |
+| tamanho | 74 075 bytes |
+| sha256 | `1cc9bcc688c7ccb97e28e5854ee114748da504891415a06c3e0083f6b3bf838a` |
 
 ---
 
@@ -113,8 +113,8 @@ Na aba **COMBAT** ha dois exemplos: o **Silent Aim** (com `Hit Chance` e
 ```
 AirFlowLibrary.luau   a biblioteca do Airflow (o menu em si)
 airflowui/
-  main.lua            entrada: biblioteca, tema roxo, janela, watermark,
-                      Settings partilhado, carrega as 6 abas
+  main.lua            entrada: biblioteca, tema, janela, fundo hexagonal,
+                      watermark, painel de keybinds, Settings e as 7 abas
   teste_misc.lua      teste da aba MISC sozinha
   build.py            junta as abas num unico ficheiro
   tabs/               uma aba por ficheiro
@@ -127,12 +127,53 @@ dist/
 
 | Aba | Coluna esquerda | Coluna direita |
 |---|---|---|
-| **COMBAT** | AIM | GUN · TRIGGERBOT · KILL AURA |
-| **PLAYERS** | PLAYERS ESP | ITEMS ESP · RADAR |
 | **VISUALS** | WORLD | PLAYER · CROSSHAIR |
+| **PLAYER** | PLAYERS ESP | ITEMS ESP · RADAR |
+| **COMBAT** | AIM | GUN · TRIGGERBOT · KILL AURA |
+| **WORLD** | ENVIRONMENT · PHYSICS | WORLD · INTERACTION |
 | **MISC** | MISC · SOUNDS | DETECT · VAULT SORT · INVENTORY VIEWER |
-| **UTILITY** | LOOT · LOOT RANGE | MOVEMENT · FREECAM · BOSS CHECKER |
-| **SETTINGS** | UI | KEYBINDS · CONFIG |
+| **LOOTFINDER** | LOOT | FILTERS · NOTIFY |
+| **SERVER** | SERVER | HOPPER · MISC |
+
+A ordem da sidebar e exactamente esta: VISUALS, PLAYER, COMBAT, WORLD,
+MISC, LOOTFINDER, SERVER.
+
+---
+
+## O tema (BBC Hub)
+
+| Cor | Valor |
+|---|---|
+| `Background` | `rgb(15, 15, 15)` |
+| `Surface` | `rgb(22, 22, 22)` |
+| `Surface2` | `rgb(30, 30, 30)` |
+| `Stroke` | `rgb(50, 50, 50)` |
+| `Accent` | `rgb(170, 80, 255)` (so nos botoes) |
+| `Text` | branco |
+
+O tema e aplicado **antes** da janela, para tudo ja nascer com as cores
+certas.
+
+---
+
+## O fundo hexagonal
+
+Um `ImageLabel` com o padrao hexagonal em mosaico (`rbxassetid://12629542321`,
+`TileSize` 50x50, `ImageTransparency` 0.8, `ZIndex` -1) vive dentro do
+`Body` da janela: fica por baixo de tudo e desaparece com ela.
+
+---
+
+## O painel de keybinds (canto superior direito)
+
+Uma lista com os atalhos do hub, so informativa (nenhuma tecla e lida
+pelo menu):
+
+```
+RShift (UI) · LAlt (Cursor) · Equals (Auto Run) · G (Fly) ·
+X (Third Person) · Z (Zoom) · C (Lock) · B (Activation) ·
+J (Aim Parts) · MB3 (Add Friend) · U (Underground)
+```
 
 ## Como uma aba e feita
 
@@ -150,8 +191,8 @@ Regras:
 1. **Duas colunas** por aba: `Groupbox({ Side = "Left" })` e
    `Groupbox({ Side = "Right" })`, com `ctx.plainColumn` nas duas.
 2. **Secoes** com o nome em maiusculas (`AIM`, `SOUNDS`, `DETECT`, ...).
-3. **Logica em marcadores**: cada callback escreve na `Settings` e
-   commenta com `-- [LOGICA ... AQUI]`.
+3. **Logica em marcadores**: cada callback faz `print("Botão alterado")`
+   e fica com o marcador `-- [INSERIR LOGICA AQUI]`.
 4. **Flags** em todos os widgets (e o que permite guardar a config).
 5. **Uma aba que falhe nao leva o menu abaixo**: o `main.lua` carrega
    cada aba num `pcall` e avisa no console.

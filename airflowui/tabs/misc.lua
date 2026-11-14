@@ -6,18 +6,17 @@
 --   coluna direita  : DETECT (4 toggles) + VAULT SORT (3 toggles)
 --                      + INVENTORY VIEWER (1 botao)
 --
--- O modulo devolve uma funcao que recebe o contexto (ctx) e constroi a
--- aba. A logica pesada fica em marcadores.
+-- Nenhum botao tem logica: cada callback imprime "Botão alterado" e
+-- fica o marcador "-- [INSERIR LOGICA AQUI]" para a logica entrar.
 -- =====================================================================
 
 return function(ctx)
 	local window = ctx.window
-	local Settings = ctx.Settings
 
 	-- -----------------------------------------------------------------
-	-- ABA "MISC" (icone "settings")
+	-- ABA "MISC" (icone "grid")
 	-- -----------------------------------------------------------------
-	local miscTab = window:CreateTab({ Name = "MISC" }, "settings")
+	local miscTab = window:CreateTab({ Name = "MISC" }, "grid")
 
 	-- DUAS COLUNAS LADO A LADO
 	local leftColumn = miscTab:Groupbox({ Name = "", Side = "Left", PopOut = false })
@@ -33,89 +32,205 @@ return function(ctx)
 	-- SECCAO "MISC" --------------------------------------------------
 	leftColumn:Section("MISC")
 
-	-- [LOGICA FAST TRADE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Fast Trade",
 		Flag = "MiscFastTrade",
 		Callback = function(value)
-			Settings.misc_fast_trade = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Trade Delay",
+				Flag = "MiscFastTradeDelay",
+				Min = 0,
+				Max = 1000,
+				Step = 10,
+				Default = 100,
+				Suffix = " ms",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA PANIC MODE AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Panic Mode",
 		Flag = "MiscPanicMode",
 		Callback = function(value)
-			Settings.misc_panic_mode = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Panic Action",
+				Flag = "MiscPanicModeAction",
+				Options = { "Close Menu", "Hide HUD", "Reset" },
+				Default = "Close Menu",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA PASS DOOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Pass Door",
 		Flag = "MiscPassDoor",
 		Callback = function(value)
-			Settings.misc_pass_door = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Auto Open",
+				Flag = "MiscPassDoorAutoOpen",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA SCREEN EFFECTS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Screen Effects",
 		Flag = "MiscScreenEffects",
 		Callback = function(value)
-			Settings.misc_screen_effects = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Effect",
+				Flag = "MiscScreenEffectsType",
+				Options = { "None", "Blur", "Vignette", "Flash" },
+				Default = "None",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA REPORT NOTIFY AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Report Notify",
 		Flag = "MiscReportNotify",
 		Callback = function(value)
-			Settings.misc_report_notify = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Sound",
+				Flag = "MiscReportNotifySound",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA JOIN NOTIFY AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Join Notify",
 		Flag = "MiscJoinNotify",
 		Callback = function(value)
-			Settings.misc_join_notify = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Toggle",
+				Name = "Sound",
+				Flag = "MiscJoinNotifySound",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "SOUNDS" ------------------------------------------------
 	leftColumn:Section("SOUNDS")
 
-	-- [LOGICA DO SOUND ID AQUI]
-	local soundId = leftColumn:Input({
+	-- [INSERIR LOGICA AQUI]
+	leftColumn:Input({
 		Name = "Add Sound ID",
 		Placeholder = "Sound ID",
 		Flag = "MiscSoundId",
 		Callback = function(value)
-			Settings.misc_sound_id = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
-	-- [LOGICA DO SOM DE PULO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Jump",
 		Flag = "MiscJumpSound",
 		Callback = function(value)
-			Settings.misc_jump_sound = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Volume",
+				Flag = "MiscJumpSoundVolume",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DOS PASSOS AQUI]
+	-- [INSERIR LOGICA AQUI]
 	leftColumn:Toggle({
 		Name = "Footsteps",
 		Flag = "MiscFootstepsSound",
 		Callback = function(value)
-			Settings.misc_footsteps_sound = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Slider",
+				Name = "Volume",
+				Flag = "MiscFootstepsSoundVolume",
+				Min = 0,
+				Max = 100,
+				Step = 1,
+				Default = 50,
+				Suffix = " %",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- -----------------------------------------------------------------
@@ -125,80 +240,179 @@ return function(ctx)
 	-- SECCAO "DETECT" ------------------------------------------------
 	rightColumn:Section("DETECT")
 
-	-- [LOGICA DE DETECTAR CONTENT CREATOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Content Creator",
 		Flag = "MiscDetectContentCreator",
 		Callback = function(value)
-			Settings.misc_detect_content_creator = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectContentCreatorStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR TESTER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Tester",
 		Flag = "MiscDetectTester",
 		Callback = function(value)
-			Settings.misc_detect_tester = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectTesterStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR MODERADOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Moderator",
 		Flag = "MiscDetectModerator",
 		Callback = function(value)
-			Settings.misc_detect_moderator = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectModeratorStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE DETECTAR CHEATER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Cheater",
 		Flag = "MiscDetectCheater",
 		Callback = function(value)
-			Settings.misc_detect_cheater = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Notify Style",
+				Flag = "MiscDetectCheaterStyle",
+				Options = { "Chat", "Window", "Both" },
+				Default = "Chat",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "VAULT SORT" --------------------------------------------
 	rightColumn:Section("VAULT SORT")
 
-	-- [LOGICA DE ORDENAR POR VALOR AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Value",
 		Flag = "MiscSortByValue",
 		Callback = function(value)
-			Settings.misc_sort_by_value = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByValueOrder",
+				Options = { "High to Low", "Low to High" },
+				Default = "High to Low",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE ORDENAR POR TIPO AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Type",
 		Flag = "MiscSortByType",
 		Callback = function(value)
-			Settings.misc_sort_by_type = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByTypeOrder",
+				Options = { "A to Z", "Z to A" },
+				Default = "A to Z",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
-	-- [LOGICA DE ORDENAR POR NOME AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Toggle({
 		Name = "Sort By Name",
 		Flag = "MiscSortByName",
 		Callback = function(value)
-			Settings.misc_sort_by_name = value
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
+		SubElements = {
+			{
+				Type = "Dropdown",
+				Name = "Order",
+				Flag = "MiscSortByNameOrder",
+				Options = { "A to Z", "Z to A" },
+				Default = "A to Z",
+				Callback = function(value)
+					print("Botão alterado")
+					-- [INSERIR LOGICA AQUI]
+				end,
+			},
+		},
 	})
 
 	-- SECCAO "INVENTORY VIEWER" -------------------------------------
 	rightColumn:Section("INVENTORY VIEWER")
 
-	-- [LOGICA DO INVENTORY VIEWER AQUI]
+	-- [INSERIR LOGICA AQUI]
 	rightColumn:Button({
 		Name = "Show Inventory",
 		Callback = function()
-			print("[Airflow] Show Inventory")
+			print("Botão alterado")
+			-- [INSERIR LOGICA AQUI]
 		end,
 	})
 
