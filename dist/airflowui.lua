@@ -299,7 +299,7 @@ local function createKeybindPanel()
 		chip.Font = Enum.Font.GothamBold
 		chip.Text = entry.key
 		chip.TextSize = 11
-		chip.TextColor3 = DARK_THEME.Accent
+		chip.TextColor3 = DARK_THEME.Text
 		chip.TextXAlignment = Enum.TextXAlignment.Center
 		chip.ZIndex = 3
 		chip.Parent = row

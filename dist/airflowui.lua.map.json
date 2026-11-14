@@ -1,9 +1,9 @@
 {
   "artifact": "airflowui",
-  "bundle_sha256": "9645ef2e3c794445b5140db3aa9732b6ef64b66337d0ce07f17211f57c850576",
-  "bundle_size": 74076,
+  "bundle_sha256": "d4817421ad2e46724733fbf51d8695f9be5134217672bc30712a47d79aa4c34e",
+  "bundle_size": 74074,
   "modules": {
-    "airflowui/main.lua": "14882b2665aae1e846a7a55c2245dcfe95f8b4836c2257497d4b28582695b281",
+    "airflowui/main.lua": "cd4e03b33334e20267f9c6ac9930080f7dc32d58d7de2d29a7ad26854bd5b11a",
     "airflowui/tabs/combat.lua": "b970223a19cbc7c419e4ccebc98fe89cc7abe735d4214d9143c854ec396ef0c5",
     "airflowui/tabs/lootfinder.lua": "c5347d331616ad28a4ae84ad43c0096ed4ad24c713bd90fb4e57659dd7b5e868",
     "airflowui/tabs/misc.lua": "d7584dbf581f8428957051ea9100ed093271dc3a3633377f35b2494402cb798f",
