@@ -96,7 +96,7 @@ local AirFlow = loadLibrary()
 assert(AirFlow, "[Airflow] nao foi possivel carregar a biblioteca (HttpGet + " .. LIBRARY_PATH .. ")")
 
 -- ---------------------------------------------------------------------
--- 2. TEMA (BBC Hub: cinza escuro + roxo so nos botoes)
+-- 3. TEMA (BBC Hub: cinza escuro + roxo so nos botoes)
 -- ---------------------------------------------------------------------
 local DARK_THEME = {
 	Accent = Color3.fromRGB(170, 80, 255),
@@ -116,7 +116,7 @@ local DARK_THEME = {
 AirFlow:SetTheme(DARK_THEME, true)
 
 -- ---------------------------------------------------------------------
--- 3. JANELA
+-- 4. JANELA
 -- ---------------------------------------------------------------------
 local window = AirFlow:Window({
 	Name = "AirflowUI",
@@ -126,7 +126,7 @@ local window = AirFlow:Window({
 })
 
 -- ---------------------------------------------------------------------
--- 4. FUNDO HEXAGONAL
+-- 5. FUNDO HEXAGONAL
 --
 -- Um ImageLabel com o padrao hexagonal em mosaico (50x50) por baixo de
 -- tudo o que esta dentro da janela (ZIndex -1). Vive no Body para
@@ -156,7 +156,7 @@ end
 createHexBackground(window)
 
 -- ---------------------------------------------------------------------
--- 5. WATERMARK E TIMER
+-- 6. WATERMARK E TIMER
 --
 -- Uma caixa no topo central da tela: o nome do hub e o tempo que o
 -- script esta a correr (os segundos desde que a biblioteca carregou).
@@ -180,7 +180,7 @@ do
 end
 
 -- ---------------------------------------------------------------------
--- 6. PAINEL DE KEYBINDS (canto superior direito)
+-- 7. PAINEL DE KEYBINDS (canto superior direito)
 --
 -- Lista dos atalhos do hub. So UI: nenhuma tecla e lida aqui, a lista
 -- e apenas informativa.
@@ -334,7 +334,7 @@ end
 createKeybindPanel()
 
 -- ---------------------------------------------------------------------
--- 7. ESTADO PARTILHADO
+-- 8. ESTADO PARTILHADO
 --
 -- Uma unica tabela para todas as abas: assim uma feature que cruza abas
 -- (o som, o crosshair, o FOV) le e escreve sempre no mesmo sitio.
@@ -369,7 +369,7 @@ local ctx = {
 }
 
 -- ---------------------------------------------------------------------
--- 8. ABAS
+-- 9. ABAS
 --
 -- A ordem e a ordem em que aparecem na sidebar. Uma aba que falhe nao
 -- leva o menu inteiro abaixo: o resto continua a funcionar.
@@ -3180,7 +3180,7 @@ end
 print("[Airflow] pronto: " .. tostring(loaded) .. "/" .. tostring(#TABS) .. " abas")
 
 -- ---------------------------------------------------------------------
--- 9. ROLAGEM DAS ABAS
+-- 10. ROLAGEM DAS ABAS
 --
 -- O conteudo de cada aba vive num ScrollingFrame: a barra de rolagem
 -- fica com 4 px (fina, como no BBC Hub) e o canvas segue o conteudo,

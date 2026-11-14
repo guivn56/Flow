@@ -8,16 +8,22 @@ cabecalho e a logica pesada fica em marcadores.
 
 ```
 AirflowUI/
-  main.lua          entrada: biblioteca, tema, janela, tabela Settings
+  main.lua          entrada: biblioteca, tema, janela, fundo hexagonal,
+                    watermark, painel de keybinds, tabela Settings
+  build.py          junta as 7 abas num bundle (dist/airflowui.lua)
   teste_misc.lua    teste da aba MISC sozinha
   tabs/
-    misc.lua        aba MISC
-    combat.lua      aba COMBAT
-    players.lua     aba PLAYERS
     visuals.lua     aba VISUALS
-    utility.lua     aba UTILITY
-    settings.lua    aba SETTINGS
+    players.lua     aba PLAYER
+    combat.lua      aba COMBAT
+    world.lua       aba WORLD
+    misc.lua        aba MISC
+    lootfinder.lua  aba LOOTFINDER
+    server.lua      aba SERVER
 ```
+
+As abas aparecem na sidebar sempre por esta ordem: **VISUALS, PLAYER,
+COMBAT, WORLD, MISC, LOOTFINDER, SERVER**.
 
 A biblioteca é buscada na internet com `game:HttpGet`, a partir da RAW do
 GitHub (`https://raw.githubusercontent.com/guivn56/Flow/main/AirFlowLibrary.luau`).
@@ -65,9 +71,9 @@ O `ctx` leva quatro coisas:
 1. **Duas colunas** por aba: `Groupbox({ Side = "Left" })` e
    `Groupbox({ Side = "Right" })`, e `ctx.plainColumn` nas duas.
 2. **Secoes** com o nome em maiusculas (`AIM`, `SOUNDS`, `DETECT`, ...).
-3. **Logica em marcadores**: cada callback escreve na `Settings` e
-   commenta com `-- [LOGICA ... AQUI]` onde a feature vai ser
-   implementada.
+3. **Logica em marcadores**: nenhum botao tem logica. Todos os callbacks
+   fazem `print("Botão alterado")` e deixam o comentario
+   `-- [INSERIR LOGICA AQUI]` onde a feature vai ser implementada.
 4. **Flags** em todos os widgets: e o que permite guardar a config.
 5. **Uma aba que falhe nao leva o menu abaixo**: o `main.lua` carrega
    cada aba num `pcall` e avisa no console.
@@ -138,14 +144,22 @@ Na aba COMBAT ha dois exemplos: o **Silent Aim** (`Hit Chance`,
 
 O `main.lua` monta:
 
-1. **Tema roxo completo** (nao so a cor de destaque): paineis, cartoes e
-   tracos.
+1. **Tema cinza escuro** (`Background` 15,15,15 · `Surface` 22,22,22 ·
+   `Surface2` 30,30,30 · `Stroke` 50,50,50) com o **roxo** (170,80,255)
+   só nos botões e no texto branco.
 2. **Janela** `AirflowUI` (760x520), que se ajusta ao ecra sozinha.
-3. **Watermark** no topo central da tela: o nome do hub e o relogio com o
-   tempo que o script corre.
-4. **Colunas do BBC Hub**: o painel da coluna fica transparente e cada
+3. **Fundo hexagonal** em mosaico (`rbxassetid://12629542321`, tile 50x50,
+   `ZIndex` -1, transparencia 0.8) por baixo do conteudo da janela.
+4. **Watermark** no topo central da tela (0.5, 0, 10): o nome do hub e o
+   relogio com o tempo que o script corre.
+5. **Painel de keybinds** no canto superior direito: RShift (UI), LAlt
+   (Cursor), Equals (Auto Run), G (Fly), X (Third Person), Z (Zoom), C
+   (Lock), B (Activation), J (Aim Parts), MB3 (Add Friend), U
+   (Underground). So e informativo: nenhuma tecla e lida aqui.
+6. **Colunas do BBC Hub**: o painel da coluna fica transparente e cada
    control (toggle, slider, ...) vira um cartao com fundo, cantos e
    contorno proprios, com 6 px de espaco entre eles.
+7. **Rolagem**: cada aba vive num `ScrollingFrame` com a barra de 4 px.
 
 ## Validar sem o jogo
 
