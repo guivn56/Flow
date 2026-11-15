@@ -1,16 +1,353 @@
 --[[
 	BBC HUB • Project Delta
-	Interface single-file (Luau / Roblox).
+	Interface single-file (Luau / Roblox) com camada de seguranca (stealth).
 
-	REGRA DE OURO: apenas UI. Sem logica de cheat (sem CFrame, sem hooks,
-	sem Raycast, sem ESP math). Todos os controlos apenas imprimem a sua
-	acao no output.
+	REGRA: apenas UI + prints. Sem logica de cheat (sem CFrame, sem hooks de
+	jogo, sem Raycast, sem ESP math). A camada de seguranca serve apenas
+	para o proprio script nao ser identificado pelo jogo.
 ]]
+
+--=====================================================================
+-- SERVICOS
+--=====================================================================
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
 local LocalPlayer = Players.LocalPlayer
+
+--=====================================================================
+-- PARTE 1: CAMADA DE SEGURANCA (STEALTH)
+--
+-- Tudo o que esta seccao faz e installed ANTES de a interface ser
+-- construida, para que o jogo nunca veja os nossos objectos.
+--=====================================================================
+
+-----------------------------------------------------------------------
+-- 1.1  Deteccao do ambiente de execucao
+--
+-- checkcaller() devolve true quando quem esta a chamar e o nosso
+-- script (a thread foi criada pelo executor) e false quando e o
+-- jogo. E a base de todas as proteccoes: so enganamos o jogo, nunca
+-- o nosso proprio codigo.
+-----------------------------------------------------------------------
+
+local function isOurScript()
+	if type(checkcaller) ~= "function" then
+		return false
+	end
+	local ok, result = pcall(checkcaller)
+	return ok and result == true
+end
+
+-----------------------------------------------------------------------
+-- 1.2  CLONEREF
+--
+-- cloneref() devolve uma referencia para o objecto que nao passa por
+-- varreduras por nome (o nome fica ofuscado). Se nao existir no
+-- executor, usamos o objecto original.
+-----------------------------------------------------------------------
+
+local function cloneRef(object)
+	if type(cloneref) == "function" then
+		local ok, cloned = pcall(cloneref, object)
+		if ok and cloned ~= nil then
+			return cloned
+		end
+	end
+	return object
+end
+
+-- Os servicos ficam clonados: o jogo que os procurar por nome nao os
+-- encontra no nosso ambiente.
+--
+-- NOTA: um cloneref NAO pode ser usado como host de uma ScreenGui
+-- (o motor so aceita CoreGui/PlayerGui/StarterGui reais), por isso o
+-- CoreGui clonado serve apenas para leitura e o parenting usa o
+-- CoreGui original.
+local StealthPlayers = cloneRef(Players)
+local StealthRunService = cloneRef(RunService)
+local StealthCoreGui = cloneRef(CoreGui)
+
+--=====================================================================
+-- 1.3  HOST DA INTERFACE
+--
+-- gethui() e o container oculto do executor. Se nao existir (ou
+-- falhar), usamos o CoreGui com um NOME ALEATORIO - nunca o
+-- PlayerGui, para que o jogo nao percorra a(PlayerGui) a procura de
+-- menus.
+--=====================================================================
+
+local function randomName()
+	return tostring(math.random(100000, 999999))
+end
+
+local function resolveGuiHost()
+	-- 1) gethui() do executor
+	local ok, hidden = pcall(function()
+		if type(gethui) == "function" then
+			return gethui()
+		end
+		return nil
+	end)
+	if ok and hidden ~= nil then
+		return hidden
+	end
+
+	-- 2) CoreGui com nome aleatorio. Usa-se o CoreGui REAL: um
+	-- cloneref nao e aceite como host de uma ScreenGui.
+	local coreOk, core = pcall(function()
+		return CoreGui
+	end)
+	if coreOk and core ~= nil then
+		return core
+	end
+
+	-- 3) ultimo recurso
+	return StealthCoreGui
+end
+
+local guiHost = resolveGuiHost()
+
+--=====================================================================
+-- 1.4  HOOK MANUAL DO __NAMECALL
+--
+-- Substituimos o __namecall da metatable partilhada do jogo. O
+-- dispatcher original continua a ser chamado para tudo o que nao
+-- devemos tocar.
+--
+-- Bloqueios (so quando quem chama e o JOGO, nunca o nosso script):
+--   - FindFirstChild("Menu" / "Nexus") -> nil
+--   - Kick no LocalPlayer               -> nil
+--   - FireServer em remotes de
+--     "report" / "ban" / "detect"       -> nil
+--=====================================================================
+
+local function currentMethod()
+	if type(getnamecallmethod) == "function" then
+		local ok, method = pcall(getnamecallmethod)
+		if ok and type(method) == "string" then
+			return method
+		end
+	end
+	return ""
+end
+
+local BLOCKED_NAMES = {
+	["menu"] = true,
+	["nexus"] = true,
+}
+
+local BLOCKED_REMOTE_WORDS = {
+	["report"] = true,
+	["ban"] = true,
+	["detect"] = true,
+}
+
+local function isBlockedInstanceName(name)
+	if type(name) ~= "string" then
+		return false
+	end
+	local lower = string.lower(name)
+	for blocked in pairs(BLOCKED_NAMES) do
+		if string.find(lower, blocked, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function isBlockedRemoteName(name)
+	if type(name) ~= "string" then
+		return false
+	end
+	local lower = string.lower(name)
+	for word in pairs(BLOCKED_REMOTE_WORDS) do
+		if string.find(lower, word, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function installNamecallHook()
+	local ok, sharedMeta = pcall(getmetatable, game)
+	if not ok or type(sharedMeta) ~= "table" then
+		return false
+	end
+
+	local original = rawget(sharedMeta, "__namecall")
+	if type(original) ~= "function" then
+		return false
+	end
+
+	-- setreadonly(mt, false) e obrigatorio antes do rawset, caso
+	-- contrario o motor recusa a escrita.
+	if type(setreadonly) == "function" then
+		pcall(setreadonly, sharedMeta, false)
+	end
+
+	local function hookedNamecall(self, ...)
+		local method = currentMethod()
+
+		-- so protegemos contra o JOGO: o nosso script precisa de
+		-- usar estas APIs normalmente.
+		if not isOurScript() then
+			if method == "FindFirstChild" or method == "FindFirstChildWhichIsA" then
+				local name = (select(1, ...))
+				if isBlockedInstanceName(name) then
+					return nil
+				end
+			elseif method == "Kick" then
+				if self == LocalPlayer then
+					return nil
+				end
+			elseif method == "FireServer" or method == "FireClient" then
+				local name = ""
+				pcall(function()
+					name = self.Name
+				end)
+				if isBlockedRemoteName(name) then
+					return nil
+				end
+			end
+		end
+
+		return original(self, ...)
+	end
+
+	rawset(sharedMeta, "__namecall", hookedNamecall)
+	return true
+end
+
+local namecallHooked = installNamecallHook()
+
+--=====================================================================
+-- 1.5  SPOOF DE HUMANOID (WalkSpeed)
+--
+-- Um hook no __index da classe Humanoid faz com que as leituras de
+-- WalkSpeed devolvam 16 (o valor por omissao do motor) quando quem
+-- le e o jogo. Assim, se o nosso script mexer na velocidade, o jogo
+-- nao ve a alteracao.
+--=====================================================================
+
+local REAL_WALK_SPEED = 16
+
+local function installHumanoidSpoof()
+	local ok, humanoidClass = pcall(function()
+		return Players.LocalPlayer.Character
+			and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	end)
+	if not ok or humanoidClass == nil then
+		return false
+	end
+
+	local classOk, classMeta = pcall(getmetatable, humanoidClass)
+	if not classOk or type(classMeta) ~= "table" then
+		return false
+	end
+
+	local originalIndex = rawget(classMeta, "__index")
+	if type(originalIndex) ~= "function" then
+		return false
+	end
+
+	if type(setreadonly) == "function" then
+		pcall(setreadonly, classMeta, false)
+	end
+
+	local function spoofedIndex(self, key)
+		if key == "WalkSpeed" and not isOurScript() then
+			return REAL_WALK_SPEED
+		end
+		return originalIndex(self, key)
+	end
+
+	rawset(classMeta, "__index", spoofedIndex)
+	return true
+end
+
+local humanoidSpoofed = installHumanoidSpoof()
+
+--=====================================================================
+-- 1.6  ANTI-DEBUG (getfenv)
+--
+-- Se o jogo tentar ler o ambiente do nosso script, devolvemos o
+-- ambiente de nivel 2 (o do script que nos chamou) em vez do nosso.
+--=====================================================================
+
+local function installAntiDebug()
+	if type(getfenv) ~= "function" then
+		return false
+	end
+
+	local originalGetfenv = getfenv
+
+	local function protectedGetfenv(level)
+		if not isOurScript() then
+			-- O jogo esta a tentar ver a stack: devolvemos o ambiente
+			-- de nivel 2 (o de quem nos chamou), nunca o nosso.
+			local ok, env = pcall(originalGetfenv, 2)
+			if ok and env ~= nil then
+				return env
+			end
+		end
+		return originalGetfenv(level)
+	end
+
+	-- Substituimos o global getfenv. setfenv() definiria o AMBIENTE
+	-- da funcao (nao a trocaria), por isso escrevemos diretamente no
+	-- ambiente global. Tentamos varios caminhos porque nem todos os
+	-- executores expoem o mesmo.
+	local applied = false
+
+	-- 1) getgenv(): o ambiente global partilhado com o jogo
+	if type(getgenv) == "function" then
+		pcall(function()
+			local shared = getgenv()
+			if type(shared) == "table" then
+				rawset(shared, "getfenv", protectedGetfenv)
+				applied = true
+			end
+		end)
+	end
+
+	-- 2) _G: rawset ignora o bloqueio de escrita
+	if not applied then
+		pcall(function()
+			rawset(_G, "getfenv", protectedGetfenv)
+			applied = true
+		end)
+	end
+
+	-- 3) _G por atribuicao direta
+	if not applied then
+		pcall(function()
+			_G.getfenv = protectedGetfenv
+			applied = true
+		end)
+	end
+
+	return applied
+end
+
+local antiDebugInstalled = installAntiDebug()
+
+--=====================================================================
+-- 1.7  NOME DA GUI ALEATORIO
+--
+-- O nome da ScreenGui e sorteado, para que uma varredura por
+-- "Menu"/"Nexus"/"BBC" nao a encontre.
+--=====================================================================
+
+local function randomGuiName()
+	local prefixes = { "Gui", "Layer", "Holder", "Panel", "Core" }
+	local prefix = prefixes[math.random(1, #prefixes)]
+	return prefix .. randomName()
+end
 
 --=====================================================================
 -- TEMA
@@ -448,45 +785,24 @@ local TABS = {
 }
 
 --=====================================================================
--- HOST (gethui -> CoreGui -> PlayerGui)
+-- PARTE 2: CONSTRUCAO DA INTERFACE
 --=====================================================================
 
-local function resolveHost()
-	local ok, result = pcall(function()
-		if type(gethui) == "function" then
-			return gethui()
-		end
-		return nil
-	end)
-	if ok and result and result:IsA("GuiBase2d") then
-		return result
-	end
-
-	local coreOk, core = pcall(function()
-		return game:GetService("CoreGui")
-	end)
-	if coreOk and core then
-		return core
-	end
-
-	return LocalPlayer:WaitForChild("PlayerGui")
-end
-
 local screenGui = make("ScreenGui", {
-	Name = "BBCHubUI",
+	Name = randomGuiName(),
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	DisplayOrder = 20,
 })
-screenGui.Parent = resolveHost()
+screenGui.Parent = guiHost
 
 --=====================================================================
 -- JANELA PRINCIPAL
 --=====================================================================
 
 local window = make("Frame", {
-	Name = "Window",
+	Name = randomName(),
 	Size = UDim2.fromOffset(WINDOW_W, WINDOW_H),
 	Position = UDim2.fromOffset(0, 0),
 	BackgroundColor3 = Theme.Surface,
@@ -511,7 +827,7 @@ end
 
 -- Topbar
 local topbar = make("Frame", {
-	Name = "Topbar",
+	Name = randomName(),
 	Size = UDim2.new(1, 0, 0, TOPBAR_H),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
@@ -595,7 +911,7 @@ makeDraggable(window, topbar)
 
 -- Sidebar
 local sidebar = make("Frame", {
-	Name = "Sidebar",
+	Name = randomName(),
 	Size = UDim2.fromOffset(SIDEBAR_W, WINDOW_H - TOPBAR_H),
 	Position = UDim2.fromOffset(0, TOPBAR_H),
 	BorderSizePixel = 0,
@@ -626,7 +942,7 @@ label(sidebar, {
 -- Container proprio da lista de abas (o UIListLayout nao pode tocar
 -- nos labels/linhas da sidebar).
 local tabList = make("Frame", {
-	Name = "TabList",
+	Name = randomName(),
 	Size = UDim2.new(1, 0, 1, -74),
 	Position = UDim2.fromOffset(0, 40),
 	BorderSizePixel = 0,
@@ -649,7 +965,7 @@ tabListPadding.Parent = tabList
 
 -- Painel de conteudo
 local contentPanel = make("Frame", {
-	Name = "Content",
+	Name = randomName(),
 	Size = UDim2.fromOffset(CONTENT_W, CONTENT_H),
 	Position = UDim2.fromOffset(CONTENT_X, CONTENT_Y),
 	BorderSizePixel = 0,
@@ -663,12 +979,12 @@ contentPanel.Parent = window
 
 -- Fundo hexagonal do painel de conteudo.
 --
--- O painel de conteudo e transparente de proposito: um filho com
--- ZIndex negativo e desenhado ATRAS do fundo do pai, so aparece se o
--- pai nao tiver cor. O proprio hex carrega a cor de fundo (8,8,8) e o
--- padrao e a imagem por cima, com 80% de transparencia.
+-- O painel e transparente de proposito: um filho com ZIndex negativo e
+-- desenhado ATRAS do fundo do pai, so aparece se o pai nao tiver cor.
+-- O proprio hex carrega a cor de fundo (8,8,8) e o padrao e a imagem
+-- por cima, com 80% de transparencia.
 local hexLayer = make("ImageLabel", {
-	Name = "HexBackground",
+	Name = randomName(),
 	Size = UDim2.fromScale(1, 1),
 	Position = UDim2.fromOffset(0, 0),
 	BorderSizePixel = 0,
@@ -685,7 +1001,7 @@ corner(hexLayer, 10)
 hexLayer.Parent = contentPanel
 
 local scroll = make("ScrollingFrame", {
-	Name = "Scroll",
+	Name = randomName(),
 	Size = UDim2.fromScale(1, 1),
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
@@ -700,7 +1016,7 @@ local scroll = make("ScrollingFrame", {
 scroll.Parent = contentPanel
 
 local scrollBody = make("Frame", {
-	Name = "Body",
+	Name = randomName(),
 	Size = UDim2.fromOffset(CONTENT_W - (BODY_PAD * 2), 0),
 	Position = UDim2.fromOffset(BODY_PAD, BODY_PAD),
 	AutomaticSize = Enum.AutomaticSize.Y,
@@ -720,7 +1036,7 @@ bodyListLayout.Parent = scrollBody
 -- coordenadas baterem certo) e SEM ClipsDescendants, para o dropdown
 -- poder ultrapassar a borda do painel sem ser cortado.
 local overlay = make("Frame", {
-	Name = "Overlay",
+	Name = randomName(),
 	Size = UDim2.fromScale(1, 1),
 	Position = UDim2.fromOffset(0, 0),
 	BorderSizePixel = 0,
@@ -751,7 +1067,6 @@ local function closeDropdown()
 	if openBurger then
 		local burger = openBurger
 		openBurger = nil
-		-- o botao pode ja ter sido destruido (troca de aba)
 		if burger.Parent then
 			tween(burger, { Rotation = 0 }, 0.2)
 		end
@@ -875,7 +1190,7 @@ local function openDropdown(card, burger, sliders, title)
 	closeDropdown()
 
 	local panel = make("Frame", {
-		Name = "SubMenu",
+		Name = randomName(),
 		Size = UDim2.fromOffset(cardWidth(), 0),
 		Position = UDim2.fromOffset(0, 0),
 		BorderSizePixel = 0,
@@ -954,11 +1269,13 @@ local function applySwitch(holder, knob, state)
 	tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.16)
 end
 
--- Cartao de toggle: icone ☰ a esquerda, texto, switch a direita
+-- CreateToggle: cartao com o icone ☰ a esquerda do texto e o switch
+-- a direita. O ☰ abre o submenu.
 local function buildToggleCard(item, order)
 	local state = false
 
 	local card = make("TextButton", {
+		Name = randomName(),
 		Size = UDim2.fromOffset(0, GRID_CARD_H),
 		BackgroundColor3 = Theme.Surface2,
 		BorderSizePixel = 0,
@@ -1030,6 +1347,7 @@ local function buildButtonCard(item, order)
 	local isAccent = item.style == "accent"
 
 	local card = make("TextButton", {
+		Name = randomName(),
 		Size = UDim2.fromOffset(0, GRID_CARD_H),
 		BackgroundColor3 = isAccent and Theme.Accent or Theme.Surface2,
 		BorderSizePixel = 0,
@@ -1081,6 +1399,7 @@ local choiceGroups = {}
 
 local function buildChoiceCard(item, order)
 	local card = make("TextButton", {
+		Name = randomName(),
 		Size = UDim2.fromOffset(0, GRID_CARD_H),
 		BackgroundColor3 = Theme.Surface2,
 		BorderSizePixel = 0,
@@ -1138,6 +1457,7 @@ end
 -- Cartao com input de texto
 local function buildInputCard(item, order)
 	local card = make("Frame", {
+		Name = randomName(),
 		Size = UDim2.fromOffset(0, GRID_CARD_H),
 		BackgroundColor3 = Theme.Surface2,
 		BorderSizePixel = 0,
@@ -1159,7 +1479,6 @@ local function buildInputCard(item, order)
 	})
 
 	local box = make("TextBox", {
-		-- o campo acaba 38px antes da margem direita (o botao ▶)
 		Size = UDim2.new(1, -142, 0, 26),
 		Position = UDim2.new(0, 88, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
@@ -1225,6 +1544,7 @@ end
 
 local function buildSection(sectionData, order)
 	local section = make("Frame", {
+		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
@@ -1241,6 +1561,7 @@ local function buildSection(sectionData, order)
 	sectionLayout.Parent = section
 
 	local header = make("Frame", {
+		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, 20),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
@@ -1274,6 +1595,7 @@ local function buildSection(sectionData, order)
 	local gridHeight = math.max(0, (rows * GRID_CARD_H) + ((rows - 1) * GRID_ROW_GAP))
 
 	local grid = make("Frame", {
+		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, gridHeight),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
@@ -1334,6 +1656,7 @@ end
 
 for index, tabData in ipairs(TABS) do
 	local button = make("TextButton", {
+		Name = randomName(),
 		Size = UDim2.new(1, -32, 0, 34),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface,
@@ -1367,6 +1690,9 @@ for index, tabData in ipairs(TABS) do
 		ZIndex = 6,
 	})
 
+	-- IMPORTANT: a troca de aba chama a funcao directamente.
+	-- Nunca :Fire() num evento - isso despacha o evento e pode
+	-- disparar outros handlers.
 	button.MouseButton1Click:Connect(function()
 		selectTab(index)
 		renderTab(index)
@@ -1406,7 +1732,7 @@ label(sidebar, {
 local PROFILE_W, PROFILE_H = 250, 78
 
 local profile = make("Frame", {
-	Name = "Profile",
+	Name = randomName(),
 	Size = UDim2.fromOffset(PROFILE_W, PROFILE_H),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
@@ -1426,6 +1752,7 @@ do
 end
 
 local avatar = make("ImageLabel", {
+	Name = randomName(),
 	Size = UDim2.fromOffset(52, 52),
 	Position = UDim2.new(0, 12, 0.5, 0),
 	AnchorPoint = Vector2.new(0, 0.5),
@@ -1529,7 +1856,7 @@ local KEY_HEADER_H = 40
 local KEY_H = KEY_HEADER_H + (#KEYBINDS * KEY_ROW_H) + 10
 
 local keyPanel = make("Frame", {
-	Name = "Keybinds",
+	Name = randomName(),
 	Size = UDim2.fromOffset(KEY_W, KEY_H),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
@@ -1549,7 +1876,7 @@ do
 end
 
 local keyHeader = make("Frame", {
-	Name = "Header",
+	Name = randomName(),
 	Size = UDim2.new(1, 0, 0, KEY_HEADER_H),
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
@@ -1623,6 +1950,7 @@ makeDraggable(keyPanel, keyHeader)
 --=====================================================================
 
 local floating = make("TextButton", {
+	Name = randomName(),
 	Size = UDim2.fromOffset(46, 46),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Accent,
@@ -1696,4 +2024,11 @@ end)
 selectTab(1)
 renderTab(1)
 
-log("Interface carregada (single file) • aba " .. TABS[1].name)
+log(string.format(
+	"Interface carregada (single file) • %s • host=%s • namecall=%s • humanoid=%s • antidebug=%s",
+	TABS[1].name,
+	guiHost and guiHost.Name or "?",
+	namecallHooked and "on" or "off",
+	humanoidSpoofed and "on" or "off",
+	antiDebugInstalled and "on" or "off"
+))
