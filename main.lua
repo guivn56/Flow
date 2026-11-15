@@ -120,10 +120,12 @@ local guiHost = resolveGuiHost()
 -- devemos tocar.
 --
 -- Bloqueios (so quando quem chama e o JOGO, nunca o nosso script):
---   - FindFirstChild("Menu" / "Nexus") -> nil
---   - Kick no LocalPlayer               -> nil
+--   - FindFirstChild("Menu" / "Nexus")   -> nil
+--   - GetDescendants que contenha "Menu"
+--     ou "Nexus"                           -> nil
+--   - Kick no LocalPlayer                 -> nil
 --   - FireServer em remotes de
---     "report" / "ban" / "detect"       -> nil
+--     "report" / "ban" / "detect"         -> nil
 --=====================================================================
 
 local function currentMethod()
@@ -173,6 +175,23 @@ local function isBlockedRemoteName(name)
 	return false
 end
 
+-- GetDescendants nao recebe um nome: procuramos dentro do resultado
+-- qualquer descendente cujo nome seja bloqueado.
+local function containsBlockedDescendant(result)
+	if type(result) ~= "table" then
+		return false
+	end
+	for _, item in ipairs(result) do
+		local ok, name = pcall(function()
+			return item.Name
+		end)
+		if ok and isBlockedInstanceName(name) then
+			return true
+		end
+	end
+	return false
+end
+
 local function installNamecallHook()
 	local ok, sharedMeta = pcall(getmetatable, game)
 	if not ok or type(sharedMeta) ~= "table" then
@@ -201,6 +220,15 @@ local function installNamecallHook()
 				if isBlockedInstanceName(name) then
 					return nil
 				end
+			elseif method == "GetDescendants" then
+				-- se a arvore tiver um "Menu"/"Nexus", devolvemos nil
+				local ok, result = pcall(original, self, ...)
+				if ok and containsBlockedDescendant(result) then
+					return nil
+				end
+				if ok then
+					return result
+				end
 			elseif method == "Kick" then
 				if self == LocalPlayer then
 					return nil
@@ -226,15 +254,22 @@ end
 local namecallHooked = installNamecallHook()
 
 --=====================================================================
--- 1.5  SPOOF DE HUMANOID (WalkSpeed)
+-- 1.5  SPOOF DE LEITURA DO HUMANOID (apenas __index)
 --
 -- Um hook no __index da classe Humanoid faz com que as leituras de
--- WalkSpeed devolvam 16 (o valor por omissao do motor) quando quem
--- le e o jogo. Assim, se o nosso script mexer na velocidade, o jogo
--- nao ve a alteracao.
+-- WalkSpeed devolvam 16 e de JumpPower devolvam 50 (os valores por
+-- omissao do motor) quando quem le e o jogo. Assim, se o nosso script
+-- mexer na velocidade, o jogo nao ve a alteracao.
+--
+-- IMPORTANTE: so o __index e hookado. O __newindex NAO e tocado -
+-- escrever no Humanoid continua a funcionar normalmente (e mexer
+-- no __newindex trava o jogador no Delta).
 --=====================================================================
 
-local REAL_WALK_SPEED = 16
+local SPOOF_VALUES = {
+	WalkSpeed = 16,
+	JumpPower = 50,
+}
 
 local function installHumanoidSpoof()
 	local ok, humanoidClass = pcall(function()
@@ -260,8 +295,12 @@ local function installHumanoidSpoof()
 	end
 
 	local function spoofedIndex(self, key)
-		if key == "WalkSpeed" and not isOurScript() then
-			return REAL_WALK_SPEED
+		-- so leitura e so quando quem le e o jogo
+		if not isOurScript() then
+			local spoofed = SPOOF_VALUES[key]
+			if spoofed ~= nil then
+				return spoofed
+			end
 		end
 		return originalIndex(self, key)
 	end
@@ -337,7 +376,56 @@ end
 local antiDebugInstalled = installAntiDebug()
 
 --=====================================================================
--- 1.7  NOME DA GUI ALEATORIO
+-- 1.7  ANTI-DEBUG (debug.info)
+--
+-- O jogo usa debug.info para inspecionar a stack de chamadas e
+-- descobrir de onde o codigo vem. Quando quem chama e o JOGO,
+-- devolvemos "C" (como se fosse codigo nativo do motor) em vez de
+-- expor o nosso ficheiro.
+--
+-- So o debug.info e hookado. O debug.traceback NAO e tocado: mexer
+-- nele causa crash no Delta.
+--=====================================================================
+
+local function installDebugInfoHook()
+	local ok, debugTable = pcall(function()
+		return debug
+	end)
+	if not ok or type(debugTable) ~= "table" then
+		return false
+	end
+
+	local originalInfo = debugTable.info
+	if type(originalInfo) ~= "function" then
+		return false
+	end
+
+	local function protectedInfo(...)
+		if not isOurScript() then
+			-- "C" = chunk nativo, nao revela o nosso source
+			return "C"
+		end
+		return originalInfo(...)
+	end
+
+	local applied = false
+	pcall(function()
+		rawset(debugTable, "info", protectedInfo)
+		applied = true
+	end)
+	if not applied then
+		pcall(function()
+			debugTable.info = protectedInfo
+		end)
+	end
+
+	return applied
+end
+
+local debugInfoHooked = installDebugInfoHook()
+
+--=====================================================================
+-- 1.8  NOME DA GUI ALEATORIO
 --
 -- O nome da ScreenGui e sorteado, para que uma varredura por
 -- "Menu"/"Nexus"/"BBC" nao a encontre.
@@ -2025,10 +2113,11 @@ selectTab(1)
 renderTab(1)
 
 log(string.format(
-	"Interface carregada (single file) • %s • host=%s • namecall=%s • humanoid=%s • antidebug=%s",
+	"Interface carregada (single file) • %s • host=%s • namecall=%s • humanoid=%s • antidebug=%s • debuginfo=%s",
 	TABS[1].name,
 	guiHost and guiHost.Name or "?",
 	namecallHooked and "on" or "off",
 	humanoidSpoofed and "on" or "off",
-	antiDebugInstalled and "on" or "off"
+	antiDebugInstalled and "on" or "off",
+	debugInfoHooked and "on" or "off"
 ))
