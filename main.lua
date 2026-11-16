@@ -473,9 +473,31 @@ local FONT = Enum.Font.Gotham
 local FONT_MED = Enum.Font.GothamMedium
 local FONT_BOLD = Enum.Font.GothamBold
 
--- A escala da interface segue o ecra: nos telemoveis (Delta) o menu e
--- reduzido para 0.65, em ecras pequenos fica a meio, num ecra grande
--- fica a 1.
+--=====================================================================
+-- LAYOUT
+--=====================================================================
+
+local WINDOW_W, WINDOW_H = 900, 620
+local SIDEBAR_W = 210
+local TOPBAR_H = 54
+local PANEL_PAD = 12
+local BODY_PAD = 14
+local GRID_CARD_H = 44
+local GRID_GAP = 12
+local GRID_ROW_GAP = 10
+local TAB_H = 35
+local CARD_RADIUS = 9
+
+local CONTENT_X = SIDEBAR_W + PANEL_PAD
+local CONTENT_Y = TOPBAR_H + PANEL_PAD
+local CONTENT_W = WINDOW_W - CONTENT_X - PANEL_PAD
+local CONTENT_H = WINDOW_H - CONTENT_Y - PANEL_PAD
+
+-- A escala da interface segue o ecra (tecnica do AirFlowLibrary):
+--   1. escala base: 0.65 no telemóvel (Delta), 1 no PC;
+--   2. no PC, fator adaptativo em passos de 0.05 (0.85 a 1.75);
+--   3. "fit to screen": a escala nunca deixa a janela sair do ecra
+--      (piso de 0.45, para nunca ficar ilegivel).
 local function viewportSize()
 	local camera = workspace.CurrentCamera
 	if camera then
@@ -488,39 +510,28 @@ local IS_TOUCH = UserInputService.TouchEnabled
 
 local function computeUIScale()
 	local view = viewportSize()
+
+	local wanted = 1
 	if IS_TOUCH then
-		return 0.65
+		wanted = 0.65
+	else
+		local factor = math.min(view.X / 1920, view.Y / 1020)
+		if factor > 0.9 and factor < 1.15 then
+			factor = 1
+		end
+		wanted = math.clamp(math.floor(factor * 20 + 0.5) / 20, 0.85, 1.75)
 	end
-	if view.X < 1000 then
-		return 0.8
-	end
-	return 1
+
+	-- A janela tem de caber no ecra (com uma margem de 24 px).
+	local fit = math.min(
+		(view.X - 24) / WINDOW_W,
+		(view.Y - 24) / WINDOW_H
+	)
+
+	return math.max(math.min(wanted, fit), 0.45)
 end
 
 local UI_SCALE = computeUIScale()
-
---=====================================================================
--- LAYOUT
---=====================================================================
-
--- A janela e alta o suficiente para as 11 abas da sidebar caberem
--- (com o cartao de perfil no rodape) sem descer.
-local WINDOW_W, WINDOW_H = 900, 620
-local SIDEBAR_W = 210
-local TOPBAR_H = 54
-local PANEL_PAD = 12
-local BODY_PAD = 14
-local GRID_CARD_H = 44
-local GRID_GAP = 12
-local GRID_ROW_GAP = 10
-
-local CONTENT_X = SIDEBAR_W + PANEL_PAD
-local CONTENT_Y = TOPBAR_H + PANEL_PAD
-local CONTENT_W = WINDOW_W - CONTENT_X - PANEL_PAD
-local CONTENT_H = WINDOW_H - CONTENT_Y - PANEL_PAD
-
-local SLIDER_ROW_H = 46
-local SLIDER_BASE_Y = 40
 
 --=====================================================================
 -- UTILITARIOS
@@ -537,7 +548,7 @@ end
 -- Cantos arredondados.
 --
 -- O UICorner e posto com a propriedade Parent (nunca com :AddChild(),
--- que o Delta nao expõe).
+-- que o Delta nao expoe).
 local function corner(parent, radius)
 	local newCorner = Instance.new("UICorner")
 	newCorner.CornerRadius = UDim.new(0, radius)
@@ -574,9 +585,11 @@ local function label(parent, properties)
 end
 
 local function log(message)
-	print("[BBC HUB] " .. tostring(message))
+	print("[NEXUS HUB] " .. tostring(message))
 end
 
+-- Animacoes: TweenService com EasingStyle.Quart (o mesmo estilo do
+-- AirFlowLibrary).
 local function tween(object, properties, duration, style)
 	local info = TweenInfo.new(
 		duration or 0.18,
@@ -586,14 +599,6 @@ local function tween(object, properties, duration, style)
 	local animation = TweenService:Create(object, info, properties)
 	animation:Play()
 	return animation
-end
-
-local function clearChildren(parent)
-	for _, child in ipairs(parent:GetChildren()) do
-		if child:IsA("GuiObject") then
-			child:Destroy()
-		end
-	end
 end
 
 -- Arraste com MouseButton1 e Touch
@@ -635,843 +640,849 @@ local function makeDraggable(frame, handle)
 end
 
 --=====================================================================
--- CONTEUDO DAS ABAS
+-- NEXUSUI - BIBLIOTECA DE INTERFACE (single file)
+--
+-- Funcoes:
+--   Nexus.CreateWindow(title)      janela + topbar + sidebar + perfil
+--   Nexus.CreateTab(name)          aba da sidebar (com a sua pagina)
+--   Nexus.CreateSection(parent, t)  seccao com titulo e linha de 1 px
+--   Nexus.CreateToggle(parent, ...)toggle com accordion (☰)
+--   Nexus.CreateSlider(parent, ...)barra arrastavel
+--   Nexus.CreateDropdown(parent, ..)lista suspensa
+--   Nexus.CreateInput(parent, ...)  caixa de texto escura
+--   Nexus.CreateKeybind(parent, ...)botao que captura uma tecla
+--   Nexus.CreateNotification(text)  toast animado
+--
+-- Duas licoes vindas do AirFlowLibrary (so a tecnica, nao o codigo):
+--   1. o CanvasSize segue o conteudo DIVIDIDO pela escala (o
+--      AbsoluteContentSize esta em pixels ja escalados; sem dividir, no
+--      mobile o scroll fica curto);
+--   2. a escala da interface e "fit to screen": a escala base (0.65 no
+--      telemóvel) nunca pode fazer a janela sair do ecra.
 --=====================================================================
 
-local TABS = {
-	{
-		name = "HOME",
-		custom = "home",
-	},
-	{
-		name = "VISUALS",
-		sections = {
-			{
-				name = "ESP",
-				items = {
-					{ type = "toggle", label = "Box ESP" },
-					{ type = "toggle", label = "Skeleton ESP" },
-					{ type = "toggle", label = "Tracers" },
-					{ type = "toggle", label = "Name Tags" },
-				},
-			},
-			{
-				name = "HUD",
-				items = {
-					{ type = "toggle", label = "FOV Circle" },
-					{ type = "toggle", label = "Crosshair" },
-					{ type = "toggle", label = "Hitbox" },
-					{ type = "toggle", label = "FPS Counter" },
-				},
-			},
-		},
-	},
-	{
-		name = "PLAYER",
-		sections = {
-			{
-				name = "MOVEMENT",
-				items = {
-					{ type = "toggle", label = "Walk Speed" },
-					{ type = "toggle", label = "Jump Power" },
-					{ type = "toggle", label = "Gravity" },
-					{ type = "toggle", label = "Fly" },
-				},
-			},
-			{
-				name = "APPEARANCE",
-				items = {
-					{ type = "toggle", label = "Skin Changer" },
-					{ type = "toggle", label = "Team Color" },
-					{ type = "toggle", label = "Emotes" },
-					{ type = "toggle", label = "Nametag" },
-				},
-			},
-		},
-	},
-	{
-		name = "COMBAT",
-		sections = {
-			{
-				name = "AIM",
-				items = {
-					{
-						type = "toggle",
-						label = "Silent Aim",
-						sliders = {
-							{ name = "Hit Chance", min = 0, max = 100, value = 50, unit = "%" },
-						},
-						dropdowns = {
-							{ name = "Target Part", options = { "Head", "Torso", "Nearest" }, value = "Head" },
-						},
-					},
-					{
-						type = "toggle",
-						label = "Aimbot",
-						sliders = {
-							{ name = "FOV", min = 0, max = 360, value = 120, unit = "°" },
-							{ name = "Smoothness", min = 0, max = 100, value = 40, unit = "%" },
-						},
-						dropdowns = {
-							{ name = "Aim Part", options = { "Head", "Upper Torso", "Humanoid" }, value = "Head" },
-						},
-					},
-					{ type = "toggle", label = "Auto Shoot" },
-					{ type = "toggle", label = "Sticky Target" },
-					{ type = "toggle", label = "Team Check" },
-				},
-			},
-			{
-				name = "GUN",
-				items = {
-					{ type = "toggle", label = "No Recoil" },
-					{ type = "toggle", label = "Fire Rate" },
-					{ type = "toggle", label = "Auto Reload" },
-					{ type = "toggle", label = "Fake Scope" },
-				},
-			},
-		},
-	},
-	{
-		name = "WORLD",
-		sections = {
-			{
-				name = "ENVIRONMENT",
-				items = {
-					{ type = "toggle", label = "Time of Day" },
-					{ type = "toggle", label = "Fog Density" },
-					{ type = "toggle", label = "Brightness" },
-					{ type = "toggle", label = "Skybox" },
-				},
-			},
-			{
-				name = "INTERACTION",
-				items = {
-					{ type = "toggle", label = "Doors" },
-					{ type = "toggle", label = "Chests" },
-					{ type = "toggle", label = "NPC" },
-				},
-			},
-		},
-	},
-	{
-		name = "MISC",
-		sections = {
-			{
-				name = "MISC",
-				items = {
-					{ type = "toggle", label = "Fast Trade" },
-					{ type = "toggle", label = "Panic Mode" },
-					{ type = "toggle", label = "Pass Door" },
-					{ type = "toggle", label = "Screen Effects" },
-					{ type = "toggle", label = "Report Notify" },
-					{ type = "toggle", label = "Join Notify" },
-				},
-			},
-			{
-				name = "SOUNDS",
-				items = {
-					{ type = "input", label = "Add Sound ID", placeholder = "rbxassetid://..." },
-					{ type = "toggle", label = "Jump" },
-					{ type = "toggle", label = "Footsteps" },
-				},
-			},
-			{
-				name = "DETECT",
-				items = {
-					{ type = "toggle", label = "Content Creator" },
-					{ type = "toggle", label = "Tester" },
-					{ type = "toggle", label = "Moderator" },
-					{ type = "toggle", label = "Cheater" },
-				},
-			},
-			{
-				name = "VAULT SORT",
-				items = {
-					{ type = "choice", label = "Sort By Value", group = "vault" },
-					{ type = "choice", label = "Sort By Type", group = "vault" },
-					{ type = "choice", label = "Sort By Name", group = "vault" },
-				},
-			},
-			{
-				name = "INVENTORY VIEWER",
-				items = {
-					{ type = "button", label = "Show Inventory", style = "accent" },
-					{ type = "toggle", label = "Auto Refresh" },
-					{ type = "toggle", label = "Item Icons" },
-				},
-			},
-		},
-	},
-	{
-		name = "LOOTFINDER",
-		sections = {
-			{
-				name = "FILTERS",
-				items = {
-					{ type = "toggle", label = "Weapons" },
-					{ type = "toggle", label = "Medkits" },
-					{ type = "toggle", label = "Valuables" },
-					{ type = "toggle", label = "Ammo" },
-				},
-			},
-			{
-				name = "DISPLAY",
-				items = {
-					{
-						type = "toggle",
-						label = "Distance",
-						sliders = {
-							{ name = "Max Range", min = 0, max = 500, value = 150, unit = "m" },
-							{ name = "Opacity", min = 0, max = 100, value = 80, unit = "%" },
-						},
-					},
-					{ type = "toggle", label = "Rarity Colors" },
-					{ type = "toggle", label = "Path Line" },
-				},
-			},
-		},
-	},
-	{
-		name = "SERVER",
-		sections = {
-			{
-				name = "INFO",
-				items = {
-					{ type = "toggle", label = "Show Server ID" },
-					{ type = "toggle", label = "Show Region" },
-					{ type = "toggle", label = "Show Ping" },
-					{ type = "toggle", label = "Player Count" },
-				},
-			},
-			{
-				name = "ACTIONS",
-				items = {
-					{ type = "button", label = "Rejoin Server", style = "accent" },
-					{ type = "button", label = "Hop Servers" },
-					{ type = "button", label = "Copy Invite" },
-				},
-			},
-		},
-	},
-	{
-		name = "SKINCHANGER",
-		sections = {
-			{
-				name = "BODY",
-				items = {
-					{ type = "toggle", label = "Head" },
-					{ type = "toggle", label = "Torso" },
-					{ type = "toggle", label = "Arms" },
-					{ type = "toggle", label = "Legs" },
-				},
-			},
-			{
-				name = "PRESETS",
-				items = {
-					{ type = "button", label = "Reset Skin", style = "accent" },
-					{ type = "button", label = "Randomize" },
-					{ type = "button", label = "Save Preset" },
-				},
-			},
-		},
-	},
-	{
-		name = "QUESTS",
-		sections = {
-			{
-				name = "TRACKERS",
-				items = {
-					{ type = "toggle", label = "Daily Quests" },
-					{ type = "toggle", label = "Weekly Quests" },
-					{ type = "toggle", label = "Seasonal Pass" },
-				},
-			},
-			{
-				name = "CLAIM",
-				items = {
-					{ type = "button", label = "Claim All", style = "accent" },
-					{ type = "toggle", label = "Auto Claim" },
-					{ type = "toggle", label = "Reward Alerts" },
-				},
-			},
-		},
-	},
-	{
-		name = "MERCHANTS",
-		sections = {
-			{
-				name = "INVENTORY",
-				items = {
-					{ type = "toggle", label = "Sell All" },
-					{ type = "toggle", label = "Deposit All" },
-					{ type = "toggle", label = "Withdraw All" },
-					{ type = "toggle", label = "Auto Sell Junk" },
-				},
-			},
-			{
-				name = "PRICES",
-				items = {
-					{ type = "toggle", label = "Price Tracker" },
-					{ type = "toggle", label = "Profit Calculator" },
-					{ type = "toggle", label = "Market Alerts" },
-				},
-			},
-		},
-	},
-	{
-		name = "SETTINGS",
-		custom = "settings",
-	},
-}
+local Nexus = {}
+local NexusWindow = nil
+local NexusTabs = {}
+local currentTab = nil
 
---=====================================================================
--- PARTE 2: CONSTRUCAO DA INTERFACE
---=====================================================================
-
-local screenGui = make("ScreenGui", {
-	Name = randomGuiName(),
-	ResetOnSpawn = false,
-	IgnoreGuiInset = true,
-	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-	DisplayOrder = 20,
-})
-screenGui.Parent = guiHost
-
---=====================================================================
--- JANELA PRINCIPAL
---=====================================================================
-
-local window = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(WINDOW_W, WINDOW_H),
-	Position = UDim2.fromOffset(0, 0),
-	BackgroundColor3 = Theme.Background,
-	BorderSizePixel = 0,
-	Active = true,
-	ZIndex = 2,
-})
-corner(window, 12)
-border(window, Theme.Stroke, 1)
-window.Parent = screenGui
-
-local windowScale = make("UIScale", { Scale = UI_SCALE })
-windowScale.Parent = window
-
-do
-	local view = viewportSize()
-	window.Position = UDim2.fromOffset(
-		math.max(0, (view.X - (WINDOW_W * UI_SCALE)) / 2),
-		math.max(0, (view.Y - (WINDOW_H * UI_SCALE)) / 2) - 20
-	)
+-- Overlay de cada pagina: os popups (dropdowns, accordions) vivem aqui
+-- para nao serem cortados pelas margens da pagina.
+local function makeOverlay(page)
+	local overlay = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ClipsDescendants = false,
+		ZIndex = 30,
+	})
+	overlay.Parent = page
+	return overlay
 end
 
--- Topbar (BBC Hub)
---
--- Fundo escuro, uma linha subtil em baixo, o logo a esquerda, um botao
--- "default" ao centro e tres botoes de icones a direita.
-local topbar = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.new(1, 0, 0, TOPBAR_H),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface,
-	Active = true,
-	ZIndex = 3,
-})
-corner(topbar, 12)
-topbar.Parent = window
+-- ---------------------------------------------------------------------
+-- Nexus.CreateWindow(title)
+-- ---------------------------------------------------------------------
+function Nexus.CreateWindow(title)
+	local gui = make("ScreenGui", {
+		Name = randomGuiName(),
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 20,
+	})
+	gui.Parent = guiHost
 
--- O patch tapa os cantos de baixo da barra (a janela e arredondada).
-local topbarPatch = make("Frame", {
-	Size = UDim2.new(1, 0, 0, 14),
-	Position = UDim2.fromOffset(0, TOPBAR_H - 14),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface,
-	ZIndex = 3,
-})
-topbarPatch.Parent = topbar
-
--- Linha subtil em baixo da barra.
-local topbarLine = make("Frame", {
-	Size = UDim2.new(1, -24, 0, 1),
-	Position = UDim2.new(0, 12, 1, -1),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Stroke,
-	ZIndex = 4,
-})
-topbarLine.Parent = topbar
-
-local logoMark = make("Frame", {
-	Size = UDim2.fromOffset(34, 34),
-	Position = UDim2.fromOffset(16, 10),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Text,
-	ZIndex = 4,
-})
-corner(logoMark, 9)
-logoMark.Parent = topbar
-
-label(logoMark, {
-	Size = UDim2.fromScale(1, 1),
-	Text = "B",
-	TextSize = 18,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Background,
-	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 5,
-})
-
-label(topbar, {
-	Position = UDim2.fromOffset(62, 11),
-	Size = UDim2.fromOffset(240, 20),
-	Text = "BBC HUB",
-	TextSize = 16,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
-	ZIndex = 4,
-})
-
-label(topbar, {
-	Position = UDim2.fromOffset(62, 31),
-	Size = UDim2.fromOffset(240, 16),
-	Text = "PROJECT DELTA",
-	TextSize = 10,
-	Font = FONT,
-	TextColor3 = Theme.Muted,
-	ZIndex = 4,
-})
-
--- Botao central: o perfil activo (botao falso, so UI).
-local profileButton = make("TextButton", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(104, 28),
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 0, 0.5, 0),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface2,
-	Text = "default",
-	TextSize = 12,
-	Font = FONT_MED,
-	TextColor3 = Theme.Muted,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	AutoButtonColor = false,
-	ZIndex = 4,
-})
-corner(profileButton, 8)
-border(profileButton, Theme.Stroke, 1)
-profileButton.Parent = topbar
-
-label(profileButton, {
-	Position = UDim2.new(1, -22, 0, 5),
-	Size = UDim2.fromOffset(14, 16),
-	Text = "▼",
-	TextSize = 9,
-	Font = FONT,
-	TextColor3 = Theme.Muted,
-	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 5,
-})
-
-profileButton.MouseEnter:Connect(function()
-	tween(profileButton, { BackgroundColor3 = Theme.Stroke }, 0.15)
-end)
-
-profileButton.MouseLeave:Connect(function()
-	tween(profileButton, { BackgroundColor3 = Theme.Surface2 }, 0.15)
-end)
-
-profileButton.MouseButton1Click:Connect(function()
-	log("Perfil: default")
-end)
-
--- Botoes de icones a direita (lupa, lua, engrenagem). Os icones sao
--- desenhados com formas: nao ha pack de icones no single file.
-local function buildIconButton(parent, xOffset, kind)
-	local button = make("TextButton", {
+	local frame = make("Frame", {
 		Name = randomName(),
-		Size = UDim2.fromOffset(28, 28),
-		Position = UDim2.new(1, xOffset, 0, 13),
+		Size = UDim2.fromOffset(WINDOW_W, WINDOW_H),
+		Position = UDim2.fromOffset(0, 0),
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Active = true,
+		ZIndex = 2,
+	})
+	corner(frame, 12)
+	border(frame, Theme.Stroke, 1)
+	frame.Parent = gui
+
+	local scale = make("UIScale", { Scale = UI_SCALE })
+	scale.Parent = frame
+
+	-- Parede hexagonal: dentro da MainFrame, por baixo de tudo.
+	local hex = make("ImageLabel", {
+		Name = randomName(),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://12629542321",
+		ScaleType = Enum.ScaleType.Tile,
+		TileSize = UDim2.new(0, 40, 0, 40),
+		ImageColor3 = Color3.fromRGB(70, 70, 70),
+		ImageTransparency = 0.85,
+		ZIndex = -2,
+	})
+	corner(hex, 12)
+	hex.Parent = frame
+
+	-- ---------------------------------------------------------------
+	-- TOPBAR
+	-- ---------------------------------------------------------------
+	local topbar = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, TOPBAR_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		Active = true,
+		ZIndex = 3,
+	})
+	corner(topbar, 12)
+	topbar.Parent = frame
+
+	-- Patch: tapa os cantos de baixo da barra.
+	local patch = make("Frame", {
+		Size = UDim2.new(1, 0, 0, 14),
+		Position = UDim2.fromOffset(0, TOPBAR_H - 14),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		ZIndex = 3,
+	})
+	patch.Parent = topbar
+
+	-- Linha subtil em baixo da barra.
+	local line = make("Frame", {
+		Size = UDim2.new(1, -24, 0, 1),
+		Position = UDim2.new(0, 12, 1, -1),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Stroke,
+		ZIndex = 4,
+	})
+	line.Parent = topbar
+
+	local logo = make("Frame", {
+		Size = UDim2.fromOffset(34, 34),
+		Position = UDim2.fromOffset(16, 10),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Text,
+		ZIndex = 4,
+	})
+	corner(logo, 9)
+	logo.Parent = topbar
+
+	label(logo, {
+		Size = UDim2.fromScale(1, 1),
+		Text = "N",
+		TextSize = 18,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Background,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 5,
+	})
+
+	label(topbar, {
+		Position = UDim2.fromOffset(62, 11),
+		Size = UDim2.fromOffset(240, 20),
+		Text = tostring(title or "NEXUS"),
+		TextSize = 16,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		ZIndex = 4,
+	})
+
+	label(topbar, {
+		Position = UDim2.fromOffset(62, 31),
+		Size = UDim2.fromOffset(240, 16),
+		Text = "PROJECT DELTA",
+		TextSize = 10,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 4,
+	})
+
+	-- Botao central (perfil activo) - so UI.
+	local profileButton = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(104, 28),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface2,
-		Text = "",
+		Text = "default",
+		TextSize = 12,
+		Font = FONT_MED,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		AutoButtonColor = false,
 		ZIndex = 4,
 	})
-	corner(button, 8)
-	border(button, Theme.Stroke, 1)
-	button.Parent = parent
+	corner(profileButton, 8)
+	border(profileButton, Theme.Stroke, 1)
+	profileButton.Parent = topbar
 
-	if kind == "search" then
-		-- lupa: um circulo com um pe
-		local lens = make("Frame", {
-			Size = UDim2.fromOffset(12, 12),
-			Position = UDim2.fromOffset(6, 6),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Muted,
-			ZIndex = 5,
-		})
-		corner(lens, 6)
-		local lensHole = make("Frame", {
-			Size = UDim2.fromOffset(6, 6),
-			Position = UDim2.fromOffset(3, 3),
+	label(profileButton, {
+		Position = UDim2.new(1, -22, 0, 5),
+		Size = UDim2.fromOffset(14, 16),
+		Text = "▼",
+		TextSize = 9,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 5,
+	})
+
+	profileButton.MouseEnter:Connect(function()
+		tween(profileButton, { BackgroundColor3 = Theme.Stroke }, 0.15)
+	end)
+	profileButton.MouseLeave:Connect(function()
+		tween(profileButton, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+	end)
+	profileButton.MouseButton1Click:Connect(function()
+		log("Perfil: default")
+	end)
+
+	-- Botoes de icones a direita (desenhados com formas).
+	local function iconButton(xOffset, kind)
+		local button = make("TextButton", {
+			Name = randomName(),
+			Size = UDim2.fromOffset(28, 28),
+			Position = UDim2.new(1, xOffset, 0, 13),
 			BorderSizePixel = 0,
 			BackgroundColor3 = Theme.Surface2,
-			ZIndex = 6,
+			Text = "",
+			AutoButtonColor = false,
+			ZIndex = 4,
 		})
-		corner(lensHole, 3)
-		lensHole.Parent = lens
-		lens.Parent = button
+		corner(button, 8)
+		border(button, Theme.Stroke, 1)
+		button.Parent = topbar
 
-		local handle = make("Frame", {
-			Size = UDim2.fromOffset(6, 2),
-			Position = UDim2.fromOffset(15, 17),
-			Rotation = 45,
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Muted,
-			ZIndex = 5,
-		})
-		corner(handle, 1)
-		handle.Parent = button
-	elseif kind == "lua" then
-		label(button, {
-			Size = UDim2.fromScale(1, 1),
-			Text = "</>",
-			TextSize = 10,
-			Font = FONT_BOLD,
-			TextColor3 = Theme.Muted,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			ZIndex = 5,
-		})
-	else
-		-- engrenagem: um circulo com quatro dentes
-		local gear = make("Frame", {
-			Size = UDim2.fromOffset(14, 14),
-			Position = UDim2.fromOffset(7, 7),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Muted,
-			ZIndex = 5,
-		})
-		corner(gear, 7)
-		local gearHole = make("Frame", {
-			Size = UDim2.fromOffset(5, 5),
-			Position = UDim2.fromOffset(4.5, 4.5),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Surface2,
-			ZIndex = 6,
-		})
-		corner(gearHole, 3)
-		gearHole.Parent = gear
-		gear.Parent = button
-
-		for index = 0, 3 do
-			local tooth = make("Frame", {
-				Size = UDim2.fromOffset(3, 5),
-				Position = UDim2.fromOffset(13, 11.5),
-				Rotation = index * 45,
+		if kind == "search" then
+			local lens = make("Frame", {
+				Size = UDim2.fromOffset(12, 12),
+				Position = UDim2.fromOffset(6, 6),
 				BorderSizePixel = 0,
 				BackgroundColor3 = Theme.Muted,
 				ZIndex = 5,
 			})
-			corner(tooth, 1)
-			tooth.Parent = button
+			corner(lens, 6)
+			local hole = make("Frame", {
+				Size = UDim2.fromOffset(6, 6),
+				Position = UDim2.fromOffset(3, 3),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Surface2,
+				ZIndex = 6,
+			})
+			corner(hole, 3)
+			hole.Parent = lens
+			lens.Parent = button
+
+			local handle = make("Frame", {
+				Size = UDim2.fromOffset(6, 2),
+				Position = UDim2.fromOffset(15, 17),
+				Rotation = 45,
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Muted,
+				ZIndex = 5,
+			})
+			corner(handle, 1)
+			handle.Parent = button
+		elseif kind == "lua" then
+			label(button, {
+				Size = UDim2.fromScale(1, 1),
+				Text = "</>",
+				TextSize = 10,
+				Font = FONT_BOLD,
+				TextColor3 = Theme.Muted,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = 5,
+			})
+		else
+			local gear = make("Frame", {
+				Size = UDim2.fromOffset(14, 14),
+				Position = UDim2.fromOffset(7, 7),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Muted,
+				ZIndex = 5,
+			})
+			corner(gear, 7)
+			local hole = make("Frame", {
+				Size = UDim2.fromOffset(5, 5),
+				Position = UDim2.fromOffset(4.5, 4.5),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Surface2,
+				ZIndex = 6,
+			})
+			corner(hole, 3)
+			hole.Parent = gear
+			gear.Parent = button
+
+			for index = 0, 3 do
+				local tooth = make("Frame", {
+					Size = UDim2.fromOffset(3, 5),
+					Position = UDim2.fromOffset(13, 11.5),
+					Rotation = index * 45,
+					BorderSizePixel = 0,
+					BackgroundColor3 = Theme.Muted,
+					ZIndex = 5,
+				})
+				corner(tooth, 1)
+				tooth.Parent = button
+			end
 		end
+
+		button.MouseEnter:Connect(function()
+			tween(button, { BackgroundColor3 = Theme.Stroke }, 0.15)
+		end)
+		button.MouseLeave:Connect(function()
+			tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+		end)
+		button.MouseButton1Click:Connect(function()
+			log("Botao: " .. kind)
+		end)
 	end
 
+	iconButton(-74, "search")
+	iconButton(-42, "lua")
+	iconButton(-10, "settings")
+
+	makeDraggable(frame, topbar)
+
+	-- ---------------------------------------------------------------
+	-- SIDEBAR
+	-- ---------------------------------------------------------------
+	local sidebar = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(SIDEBAR_W, WINDOW_H - TOPBAR_H),
+		Position = UDim2.fromOffset(0, TOPBAR_H),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		ZIndex = 3,
+	})
+	sidebar.Parent = frame
+
+	-- Linha vertical entre a sidebar e o conteudo.
+	local divider = make("Frame", {
+		Size = UDim2.new(0, 1, 1, -28),
+		Position = UDim2.fromOffset(SIDEBAR_W - 1, TOPBAR_H + 14),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Stroke,
+		ZIndex = 4,
+	})
+	divider.Parent = frame
+
+	local sidebarPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 0),
+		PaddingTop = UDim.new(0, 14),
+		PaddingBottom = UDim.new(0, 92),
+	})
+	sidebarPadding.Parent = sidebar
+
+	local sidebarLayout = make("UIListLayout", {
+		Padding = UDim.new(0, 4),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+	})
+	sidebarLayout.Parent = sidebar
+
+	label(sidebar, {
+		Name = "CategoriesLabel",
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "CATEGORIES",
+		TextSize = 10,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		LayoutOrder = 1,
+		ZIndex = 4,
+	})
+
+	-- ---------------------------------------------------------------
+	-- CONTEUDO
+	-- ---------------------------------------------------------------
+	local content = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(CONTENT_W, CONTENT_H),
+		Position = UDim2.fromOffset(CONTENT_X, CONTENT_Y),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		ZIndex = 3,
+	})
+	corner(content, 10)
+	border(content, Theme.Stroke, 1)
+	content.Parent = frame
+
+	-- ---------------------------------------------------------------
+	-- CARD DE PERFIL (canto inferior esquerdo da janela)
+	-- ---------------------------------------------------------------
+	local profile = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(180, 74),
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 15, 1, -15),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		Active = true,
+		ZIndex = 6,
+	})
+	corner(profile, 12)
+	border(profile, Theme.Stroke, 1)
+	profile.Parent = frame
+
+	local avatar = make("ImageLabel", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(44, 44),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		ScaleType = Enum.ScaleType.Crop,
+		ZIndex = 7,
+	})
+	corner(avatar, 10)
+	border(avatar, Theme.Stroke, 1)
+	avatar.Parent = profile
+
+	local avatarInitial = make("TextLabel", {
+		Name = "Lbl",
+		Size = UDim2.fromScale(1, 1),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Text = string.sub(string.upper(LocalPlayer.Name), 1, 1),
+		TextSize = 18,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 8,
+	})
+	avatarInitial.Parent = avatar
+
+	pcall(function()
+		local thumbnail = Players:GetUserThumbnailAsync(
+			LocalPlayer.UserId,
+			Enum.ThumbnailType.HeadShot,
+			Enum.ThumbnailSize.Size100x100
+		)
+		if thumbnail and thumbnail ~= "" then
+			avatar.Image = thumbnail
+			avatarInitial.Visible = false
+		end
+	end)
+
+	label(profile, {
+		Size = UDim2.fromOffset(110, 18),
+		Position = UDim2.new(0, 62, 0, 14),
+		Text = LocalPlayer.DisplayName,
+		TextSize = 12,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
+	})
+
+	label(profile, {
+		Size = UDim2.fromOffset(110, 14),
+		Position = UDim2.new(0, 62, 0, 32),
+		Text = "@" .. LocalPlayer.Name,
+		TextSize = 10,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
+	})
+
+	-- A unica cor forte do menu.
+	local ownerTag = make("TextLabel", {
+		Name = "Lbl",
+		Size = UDim2.fromOffset(52, 16),
+		Position = UDim2.new(0, 62, 0, 48),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Accent,
+		BackgroundTransparency = 0.82,
+		Text = "OWNER",
+		TextSize = 9,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 7,
+	})
+	corner(ownerTag, 5)
+	ownerTag.Parent = profile
+
+	local footer = label(frame, {
+		Name = "SidebarFooter",
+		Size = UDim2.fromOffset(SIDEBAR_W - 36, 16),
+		Position = UDim2.new(0, 18, 1, -32),
+		Text = "NEXUS v1.0  •  SINGLE FILE",
+		TextSize = 9,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 4,
+	})
+
+	-- Centra a janela no ecra (a escala ja esta aplicada).
+	local function center()
+		local view = viewportSize()
+		frame.Position = UDim2.fromOffset(
+			math.max(0, (view.X - (WINDOW_W * UI_SCALE)) / 2),
+			math.max(0, (view.Y - (WINDOW_H * UI_SCALE)) / 2) - 20
+		)
+	end
+	center()
+
+	NexusWindow = {
+		Gui = gui,
+		Frame = frame,
+		Topbar = topbar,
+		Sidebar = sidebar,
+		Content = content,
+		Profile = profile,
+		Footer = footer,
+		Divider = divider,
+		Scale = scale,
+		Tabs = NexusTabs,
+		Center = center,
+	}
+
+	return NexusWindow
+end
+
+-- ---------------------------------------------------------------------
+-- Nexus.CreateTab(name)
+--
+-- Cada aba tem a sua pagina com o seu proprio ScrollingFrame: e o que
+-- garante que o scroll funciona em todas as abas.
+-- ---------------------------------------------------------------------
+function Nexus.CreateTab(name)
+	local page = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 4,
+	})
+	page.Parent = NexusWindow.Content
+
+	local scroll = make("ScrollingFrame", {
+		Name = randomName(),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = Theme.Muted,
+		ScrollBarImageTransparency = 0.45,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		CanvasSize = UDim2.fromOffset(CONTENT_W, CONTENT_H),
+		ZIndex = 5,
+	})
+	scroll.Parent = page
+
+	-- Padding do ScrollingFrame (nada de posicoes fixas no conteudo).
+	local padding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, BODY_PAD),
+		PaddingRight = UDim.new(0, BODY_PAD),
+		PaddingTop = UDim.new(0, BODY_PAD),
+		PaddingBottom = UDim.new(0, BODY_PAD),
+	})
+	padding.Parent = scroll
+
+	local body = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 5,
+	})
+	body.Parent = scroll
+
+	local bodyLayout = make("UIListLayout", {
+		Padding = UDim.new(0, 16),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	bodyLayout.Parent = body
+
+	-- O canvas segue o conteudo: o AbsoluteContentSize ja vem escalado
+	-- (e o CanvasSize nao), por isso dividimos pela escala.
+	local function refreshCanvas()
+		local height = (bodyLayout.AbsoluteContentSize.Y / UI_SCALE) + 4
+		scroll.CanvasSize = UDim2.fromOffset(CONTENT_W, math.max(height, CONTENT_H))
+	end
+	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCanvas)
+
+	local overlay = makeOverlay(page)
+
+	-- Botao na sidebar.
+	local button = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.new(1, -10, 0, TAB_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		Text = "",
+		AutoButtonColor = false,
+		Visible = true,
+		LayoutOrder = #NexusTabs + 2,
+		ZIndex = 5,
+	})
+	corner(button, 8)
+	button.Parent = NexusWindow.Sidebar
+
+	local icon = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(15, 15),
+		Position = UDim2.new(0, 2, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Stroke,
+		ZIndex = 6,
+	})
+	corner(icon, 4)
+	icon.Parent = button
+
+	local indicator = make("Frame", {
+		Size = UDim2.fromOffset(3, 16),
+		Position = UDim2.new(0, -6, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Text,
+		Visible = false,
+		ZIndex = 6,
+	})
+	corner(indicator, 2)
+	indicator.Parent = button
+
+	local text = label(button, {
+		Position = UDim2.fromOffset(25, 0),
+		Size = UDim2.new(1, -33, 1, 0),
+		Text = tostring(name or ""),
+		TextSize = 12,
+		Font = FONT_MED,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 6,
+	})
+
+	local tab = {
+		Name = name,
+		Page = page,
+		Scroll = scroll,
+		Body = body,
+		Overlay = overlay,
+		Button = button,
+		Icon = icon,
+		Indicator = indicator,
+		Text = text,
+		RefreshCanvas = refreshCanvas,
+	}
+
+	function tab:Show()
+		for _, other in ipairs(NexusTabs) do
+			other.Page.Visible = other == self
+			other.Button.BackgroundColor3 = other == self and Theme.Surface2 or Theme.Surface
+			other.Text.TextColor3 = other == self and Theme.Text or Theme.Muted
+			other.Indicator.Visible = other == self
+		end
+		currentTab = self
+		Nexus.RefreshCanvases()
+	end
+
+	button.MouseButton1Click:Connect(function()
+		tab:Show()
+		log("Aba: " .. tostring(name))
+	end)
+
 	button.MouseEnter:Connect(function()
-		tween(button, { BackgroundColor3 = Theme.Stroke }, 0.15)
+		if not indicator.Visible then
+			tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+		end
 	end)
 
 	button.MouseLeave:Connect(function()
-		tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+		if not indicator.Visible then
+			tween(button, { BackgroundColor3 = Theme.Surface }, 0.15)
+		end
 	end)
 
-	button.MouseButton1Click:Connect(function()
-		log("Botao: " .. kind)
-	end)
-
-	return button
+	table.insert(NexusTabs, tab)
+	return tab
 end
 
-buildIconButton(topbar, -74, "search")
-buildIconButton(topbar, -42, "lua")
-buildIconButton(topbar, -10, "settings")
+-- Recalcula o canvas de todas as abas (quando o conteudo muda).
+function Nexus.RefreshCanvases()
+	for _, tab in ipairs(NexusTabs) do
+		task.defer(function()
+			if tab.Page.Visible then
+				tab.RefreshCanvas()
+			end
+		end)
+	end
+end
 
-makeDraggable(window, topbar)
-
--- Sidebar
+-- ---------------------------------------------------------------------
+-- Nexus.CreateSection(parent, title)
 --
--- A lista de abas vive DENTRO da sidebar (os botoes tem a sidebar como
--- Parent), com um UIPadding para nao encostarem nas bordas e um
--- UIListLayout com o mesmo espacamento para todas.
-local sidebar = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(SIDEBAR_W, WINDOW_H - TOPBAR_H),
-	Position = UDim2.fromOffset(0, TOPBAR_H),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	-- As abas nunca passam do rodape da sidebar.
-	ClipsDescendants = true,
-	ZIndex = 3,
-})
-sidebar.Parent = window
-
--- Linha vertical que separa a sidebar do conteudo (vive na janela para
--- o UIListLayout da sidebar nao a mexer).
-local sidebarLine = make("Frame", {
-	Size = UDim2.new(0, 1, 1, -28),
-	Position = UDim2.fromOffset(SIDEBAR_W - 1, TOPBAR_H + 14),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Stroke,
-	ZIndex = 4,
-})
-sidebarLine.Parent = window
-
--- Espaco interior: as abas nao encostam nas bordas (10 px a esquerda e
--- 10 px a direita, com o -10 do botao) e o rodape fica livre para o
--- card de perfil.
-local sidebarPadding = make("UIPadding", {
-	PaddingLeft = UDim.new(0, 10),
-	PaddingRight = UDim.new(0, 0),
-	PaddingTop = UDim.new(0, 14),
-	PaddingBottom = UDim.new(0, 92),
-})
-sidebarPadding.Parent = sidebar
-
-local sidebarLayout = make("UIListLayout", {
-	Padding = UDim.new(0, 4),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-	HorizontalAlignment = Enum.HorizontalAlignment.Left,
-})
-sidebarLayout.Parent = sidebar
-
-label(sidebar, {
-	Name = "CategoriesLabel",
-	Size = UDim2.new(1, 0, 0, 16),
-	Text = "CATEGORIES",
-	TextSize = 10,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Muted,
-	LayoutOrder = 1,
-	ZIndex = 4,
-})
-
--- Painel de conteudo
---
--- O painel e transparente: a "parede" (fundo hexagonal) vive na janela
--- e aparece por baixo do conteudo.
-local contentPanel = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(CONTENT_W, CONTENT_H),
-	Position = UDim2.fromOffset(CONTENT_X, CONTENT_Y),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ClipsDescendants = true,
-	ZIndex = 3,
-})
-corner(contentPanel, 10)
-border(contentPanel, Theme.Stroke, 1)
-contentPanel.Parent = window
-
--- Parede com o padrao hexagonal: vive na MAIN FRAME, com ZIndex -2
--- (por baixo de tudo o que esta na janela) e mosaico de 40x40.
-local hexLayer = make("ImageLabel", {
-	Name = randomName(),
-	Size = UDim2.fromScale(1, 1),
-	Position = UDim2.fromOffset(0, 0),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	Image = "rbxassetid://12629542321",
-	ScaleType = Enum.ScaleType.Tile,
-	TileSize = UDim2.new(0, 40, 0, 40),
-	ImageColor3 = Color3.fromRGB(70, 70, 70),
-	ImageTransparency = 0.85,
-	ZIndex = -2,
-})
-corner(hexLayer, 12)
-hexLayer.Parent = window
-
-local scroll = make("ScrollingFrame", {
-	Name = randomName(),
-	Size = UDim2.fromScale(1, 1),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ScrollBarThickness = 4,
-	ScrollBarImageColor3 = Theme.Muted,
-	ScrollBarImageTransparency = 0.45,
-	ScrollingDirection = Enum.ScrollingDirection.Y,
-	CanvasSize = UDim2.fromOffset(CONTENT_W, CONTENT_H),
-	ZIndex = 4,
-})
-scroll.Parent = contentPanel
-
-local scrollBody = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.new(1, 0, 0, 0),
-	Position = UDim2.fromOffset(0, 0),
-	AutomaticSize = Enum.AutomaticSize.Y,
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ZIndex = 4,
-})
-scrollBody.Parent = scroll
-
--- Espaco interior do ScrollingFrame (padding em vez de posicoes fixas).
-local scrollPadding = make("UIPadding", {
-	PaddingLeft = UDim.new(0, BODY_PAD),
-	PaddingRight = UDim.new(0, BODY_PAD),
-	PaddingTop = UDim.new(0, BODY_PAD),
-	PaddingBottom = UDim.new(0, BODY_PAD),
-})
-scrollPadding.Parent = scroll
-
-local bodyListLayout = make("UIListLayout", {
-	Padding = UDim.new(0, 16),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-})
-bodyListLayout.Parent = scrollBody
-
--- O canvas segue o conteudo: quando um submenu abre (ou fecha) a coluna
--- cresce, por isso o canvas e recalculado.
-local function refreshCanvas()
-	local height = scrollBody.AbsoluteSize.Y + (BODY_PAD * 2)
-	scroll.CanvasSize = UDim2.fromOffset(CONTENT_W, math.max(height, CONTENT_H))
-end
-
-pcall(function()
-	scrollBody:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshCanvas)
-end)
-
--- Overlay dos submenus: dentro do painel de conteudo (para as
--- coordenadas baterem certo) e SEM ClipsDescendants, para o dropdown
--- poder ultrapassar a borda do painel sem ser cortado.
-local overlay = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.fromScale(1, 1),
-	Position = UDim2.fromOffset(0, 0),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ClipsDescendants = false,
-	ZIndex = 20,
-})
-overlay.Parent = contentPanel
-
---=====================================================================
--- COMPONENTES
---=====================================================================
-
-local openPanel = nil
-local openList = nil
-local openBurger = nil
-
--- Fecha o submenu (e a lista de opcoes).
--- keepPanel = true deixa o submenu aberto e so fecha a lista.
-local function closeDropdown(keepPanel)
-	if openPanel and not keepPanel then
-		local panel = openPanel
-		openPanel = nil
-		local animation = tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, 0) }, 0.15)
-		-- Alguns executores não dão o sinal Completed: nesse caso o
-		-- painel é destruído no frame seguinte.
-		if animation and animation.Completed then
-			animation.Completed:Once(function()
-				if panel.Parent then
-					panel:Destroy()
-				end
-			end)
-		else
-			task.defer(function()
-				if panel.Parent then
-					panel:Destroy()
-				end
-			end)
-		end
-	end
-	if openList then
-		local list = openList
-		openList = nil
-		if list.Parent then
-			list:Destroy()
-		end
-	end
-	if openBurger and not keepPanel then
-		local burger = openBurger
-		openBurger = nil
-		if burger.Parent then
-			tween(burger, { Rotation = 0 }, 0.2)
-		end
-	end
-
-	-- O conteudo da aba voltou ao tamanho normal: o canvas e recalculado.
-	refreshCanvas()
-end
-
-local function cardWidth()
-	-- A largura de um cartao e metade da coluna. O scroll e a referencia
-	-- (o conteudo tem o padding de BODY_PAD de cada lado).
-	local bodyWidth = (scroll.AbsoluteSize.X / UI_SCALE) - (BODY_PAD * 2)
-	if bodyWidth <= 0 then
-		bodyWidth = CONTENT_W - (BODY_PAD * 2)
-	end
-	return math.max(140, (bodyWidth - GRID_GAP) / 2)
-end
-
--- Slider visual: linha cinza com preenchimento roxo.
--- A linha e um item do UIListLayout do submenu (sem posicoes fixas).
-local function buildSlider(parent, spec, order)
-	local minValue = spec.min or 0
-	local maxValue = spec.max or 100
-	local unit = spec.unit or ""
-
-	local row = make("Frame", {
+-- Seccao com o titulo em maiusculas e uma linha de 1 px a direita. Os
+-- controlos vao para uma grelha de duas colunas (UIGridLayout).
+-- ---------------------------------------------------------------------
+function Nexus.CreateSection(parent, title)
+	local section = make("Frame", {
 		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, SLIDER_ROW_H - 10),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
-		LayoutOrder = order,
-		ZIndex = 22,
+		LayoutOrder = #parent:GetChildren(),
+		ZIndex = 5,
 	})
-	row.Parent = parent
+	section.Parent = parent
 
-	label(row, {
+	local sectionLayout = make("UIListLayout", {
+		Padding = UDim.new(0, 10),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	sectionLayout.Parent = section
+
+	local header = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 20),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 1,
+		ZIndex = 5,
+	})
+	header.Parent = section
+
+	local titleText = string.upper(tostring(title or ""))
+	local titleWidth = math.max(60, (#titleText * 7) + 6)
+
+	label(header, {
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.new(1, -70, 0, 16),
-		Text = spec.name,
+		Size = UDim2.fromOffset(titleWidth, 16),
+		Text = titleText,
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local headerLine = make("Frame", {
+		Size = UDim2.new(1, -(titleWidth + 14), 0, 1),
+		Position = UDim2.fromOffset(titleWidth + 10, 8),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Stroke,
+		ZIndex = 6,
+	})
+	headerLine.Parent = header
+
+	-- Grelha de duas colunas.
+	local grid = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	grid.Parent = section
+
+	local gridLayout = make("UIGridLayout", {
+		CellSize = UDim2.new(0.5, -6, 0, GRID_CARD_H),
+		CellPadding = UDim2.new(0, GRID_GAP, 0, GRID_ROW_GAP),
+		FillDirection = Enum.FillDirection.Horizontal,
+		FillDirectionMaxCells = 2,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+	})
+	gridLayout.Parent = grid
+
+	local api = {
+		Frame = section,
+		Grid = grid,
+		Order = 0,
+	}
+
+	-- API: os controlos sao colocados na grelha por ordem de chamada.
+	function api:Add(control)
+		self.Order += 1
+		control.LayoutOrder = self.Order
+		control.Parent = grid
+		return control
+	end
+
+	return api
+end
+
+-- ---------------------------------------------------------------------
+-- Nexus.CreateSlider(parent, title, min, max, default)
+--
+-- Barra arrastavel. A matematica e a do AirFlow: o valor e uma fracao
+-- entre o minimo e o maximo, e o preenchimento/knob andam para essa
+-- fracao.
+-- ---------------------------------------------------------------------
+function Nexus.CreateSlider(parent, title, min, max, default)
+	min = min or 0
+	max = max or 100
+	default = default or min
+
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, CARD_RADIUS)
+	border(card, Theme.Stroke, 1)
+
+	label(card, {
+		Position = UDim2.fromOffset(12, 6),
+		Size = UDim2.new(1, -80, 0, 16),
+		Text = tostring(title or ""),
 		TextSize = 11,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
-		ZIndex = 23,
+		ZIndex = 6,
 	})
 
-	local valueLabel = label(row, {
-		Position = UDim2.new(1, -64, 0, 0),
-		Size = UDim2.fromOffset(64, 16),
-		Text = tostring(spec.value) .. unit,
+	local valueLabel = label(card, {
+		Position = UDim2.new(1, -62, 0, 8),
+		Size = UDim2.fromOffset(50, 16),
+		Text = tostring(default),
 		TextSize = 11,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Text,
+		TextColor3 = Theme.Muted,
 		TextXAlignment = Enum.TextXAlignment.Right,
-		ZIndex = 23,
+		ZIndex = 6,
 	})
 
-	-- o trilho e recuado 6px de cada lado para o knob nunca sair do
-	-- cartao quando esta numa ponta
 	local track = make("TextButton", {
-		Size = UDim2.new(1, -12, 0, 6),
-		Position = UDim2.fromOffset(6, 24),
+		Name = randomName(),
+		Size = UDim2.new(1, -24, 0, 6),
+		Position = UDim2.fromOffset(12, 28),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Stroke,
 		Text = "",
 		AutoButtonColor = false,
-		ZIndex = 22,
+		ZIndex = 6,
 	})
 	corner(track, 3)
-	track.Parent = row
+	track.Parent = card
 
 	local fill = make("Frame", {
 		Size = UDim2.fromScale(0, 1),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Muted,
-		ZIndex = 23,
+		ZIndex = 7,
 	})
 	corner(fill, 3)
 	fill.Parent = track
@@ -1482,573 +1493,102 @@ local function buildSlider(parent, spec, order)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Text,
-		ZIndex = 24,
+		ZIndex = 8,
 	})
 	corner(knob, 6)
-	-- Bolinha BRANCA com anel escuro (para se ver no trilho claro).
 	border(knob, Theme.Background, 1)
 	knob.Parent = track
 
-	local function applyRatio(ratio)
-		ratio = math.clamp(ratio, 0, 1)
-		local value = minValue + (ratio * (maxValue - minValue))
-		fill.Size = UDim2.fromScale(ratio, 1)
-		knob.Position = UDim2.fromScale(ratio, 0.5)
-		valueLabel.Text = tostring(math.floor(value + 0.5)) .. unit
-		return value
+	local value = math.clamp(default, min, max)
+	local dragging = false
+
+	local function fraction()
+		if (max - min) == 0 then
+			return 0
+		end
+		return (value - min) / (max - min)
+	end
+
+	local function moveTo(frac, duration)
+		tween(fill, { Size = UDim2.new(frac, 0, 1, 0) }, duration or 0.12)
+		tween(knob, { Position = UDim2.new(frac, 0, 0.5, 0) }, duration or 0.12)
+	end
+
+	local function render()
+		valueLabel.Text = tostring(math.floor(value + 0.5))
+		moveTo(fraction(), 0)
+	end
+
+	-- A fracao e calculada sobre o tamanho ABSOLUTO do trilho: as
+	-- coordenadas do ecra e o trilho estao na mesma escala, por isso a
+	-- razao e correta em qualquer UIScale.
+	local function updateFromX(x)
+		local width = math.max(track.AbsoluteSize.X, 1)
+		local frac = math.clamp((x - track.AbsolutePosition.X) / width, 0, 1)
+		value = min + (frac * (max - min))
+		render()
 	end
 
 	track.InputBegan:Connect(function(input)
 		local mouse = input.UserInputType == Enum.UserInputType.MouseButton1
 		local touch = input.UserInputType == Enum.UserInputType.Touch
-		if not (mouse or touch) then
+		if mouse or touch then
+			dragging = true
+			tween(knob, { Size = UDim2.fromOffset(16, 16) }, 0.15, Enum.EasingStyle.Back)
+			updateFromX(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then
 			return
 		end
-		local width = track.AbsoluteSize.X
-		if width <= 0 then
+		local moved = input.UserInputType == Enum.UserInputType.MouseMovement
+		local dragged = input.UserInputType == Enum.UserInputType.Touch
+		if moved or dragged then
+			updateFromX(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if not dragging then
 			return
 		end
-		local ratio = (input.Position.X - track.AbsolutePosition.X) / width
-		local value = applyRatio(ratio)
-		log(string.format("%s: %d%s", spec.name, math.floor(value + 0.5), unit))
+		dragging = false
+		tween(knob, { Size = UDim2.fromOffset(12, 12) }, 0.2)
+		log(string.format("%s: %d", tostring(title), math.floor(value + 0.5)))
 	end)
 
-	if maxValue > minValue then
-		applyRatio((spec.value - minValue) / (maxValue - minValue))
-	else
-		applyRatio(0)
-	end
+	render()
 
-	return row
+	local api = {
+		Frame = card,
+		GetValue = function()
+			return value
+		end,
+		SetValue = function(newValue)
+			value = math.clamp(newValue, min, max)
+			render()
+		end,
+	}
+	return api
 end
 
--- SubFrame que abre por baixo do cartao, com altura animada.
---
--- O painel usa UIListLayout + AutomaticSize: os controlos (sliders e
--- dropdowns) sao itens da lista, nunca posicoes fixas. A altura e a
--- animacao quem a da (TweenService, EasingStyle.Quint).
-local function openDropdown(card, burger, sliders, title, dropdowns)
-	if openBurger == burger then
-		closeDropdown()
-		return
-	end
-	closeDropdown()
+-- ---------------------------------------------------------------------
+-- Nexus.CreateDropdown(parent, title, options)
+-- ---------------------------------------------------------------------
+function Nexus.CreateDropdown(parent, title, options)
+	options = options or {}
 
-	local panel = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.fromOffset(cardWidth(), 0),
-		Position = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
-		ClipsDescendants = true,
-		ZIndex = 61,
-	})
-	corner(panel, 10)
-	border(panel, Theme.Stroke, 1)
-	panel.Parent = overlay
-
-	local panelLayout = make("UIListLayout", {
-		Padding = UDim.new(0, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	})
-	panelLayout.Parent = panel
-
-	local panelPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
-		PaddingTop = UDim.new(0, 10),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	panelPadding.Parent = panel
-
-	label(panel, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = string.upper(title or "OPTIONS"),
-		TextSize = 10,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		LayoutOrder = 1,
-		ZIndex = 62,
-	})
-
-	for index, spec in ipairs(sliders) do
-		buildSlider(panel, spec, index + 1)
-	end
-
-	-- Dropdowns: uma linha com o nome e o valor actual. O valor abre
-	-- uma lista pequena por baixo da linha.
-	local dropdownRows = {}
-	for index, spec in ipairs(dropdowns) do
-		local row = make("Frame", {
-			Name = randomName(),
-			Size = UDim2.new(1, 0, 0, 30),
-			BorderSizePixel = 0,
-			BackgroundTransparency = 1,
-			LayoutOrder = #sliders + index + 1,
-			ZIndex = 62,
-		})
-		row.Parent = panel
-
-		label(row, {
-			Position = UDim2.fromOffset(0, 7),
-			Size = UDim2.new(1, -120, 0, 16),
-			Text = spec.name,
-			TextSize = 11,
-			Font = FONT_MED,
-			TextColor3 = Theme.Text,
-			ZIndex = 63,
-		})
-
-		local value = spec.value or spec.options[1]
-		local valueButton = make("TextButton", {
-			Size = UDim2.fromOffset(110, 22),
-			Position = UDim2.new(1, -110, 0, 4),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Surface,
-			Text = tostring(value),
-			TextSize = 11,
-			Font = FONT_MED,
-			TextColor3 = Theme.Text,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			AutoButtonColor = false,
-			ZIndex = 63,
-		})
-		corner(valueButton, 7)
-		border(valueButton, Theme.Stroke, 1)
-		valueButton.Parent = row
-
-		label(row, {
-			Position = UDim2.new(1, -24, 0, 9),
-			Size = UDim2.fromOffset(14, 14),
-			Text = "▾",
-			TextSize = 10,
-			Font = FONT_BOLD,
-			TextColor3 = Theme.Muted,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			ZIndex = 63,
-		})
-
-		valueButton.MouseButton1Click:Connect(function()
-			-- A lista abre por cima do submenu (sem ser cortada).
-			if openList then
-				closeDropdown(true)
-				return
-			end
-			local list = make("Frame", {
-				Name = randomName(),
-				Size = UDim2.fromOffset(110, (#spec.options * 24) + 8),
-				BorderSizePixel = 0,
-				BackgroundColor3 = Theme.Surface,
-				ClipsDescendants = true,
-				ZIndex = 90,
-			})
-			corner(list, 8)
-			border(list, Theme.Stroke, 1)
-			list.Parent = overlay
-
-			local origin = row.AbsolutePosition - contentPanel.AbsolutePosition
-			list.Position = UDim2.fromOffset(
-				(origin.X + row.AbsoluteSize.X - 110) / UI_SCALE,
-				(origin.Y + row.AbsoluteSize.Y) / UI_SCALE + 2
-			)
-
-			for optionIndex, option in ipairs(spec.options) do
-				local optionButton = make("TextButton", {
-					Name = randomName(),
-					Size = UDim2.new(1, -16, 0, 22),
-					Position = UDim2.fromOffset(8, 4 + ((optionIndex - 1) * 24)),
-					BorderSizePixel = 0,
-					BackgroundTransparency = 1,
-					Text = tostring(option),
-					TextSize = 11,
-					Font = FONT_MED,
-					TextColor3 = Theme.Text,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					AutoButtonColor = false,
-					ZIndex = 91,
-				})
-				optionButton.Parent = list
-
-				optionButton.MouseButton1Click:Connect(function()
-					value = option
-					valueButton.Text = tostring(option)
-					closeDropdown(true)
-					log(string.format("%s -> %s", spec.name, tostring(option)))
-				end)
-			end
-
-			openList = list
-		end)
-
-		table.insert(dropdownRows, row)
-	end
-
-	-- Posicao relativa ao painel de conteudo. O overlay vive dentro do
-	-- contentPanel, por isso basta a diferenca para o painel. As
-	-- coordenadas de ecra sao divididas pela escala porque o painel esta
-	-- sob um UIScale.
-	local origin = card.AbsolutePosition - contentPanel.AbsolutePosition
-	panel.Position = UDim2.fromOffset(
-		origin.X / UI_SCALE,
-		(origin.Y + card.AbsoluteSize.Y) / UI_SCALE + 6
-	)
-
-	-- A altura final vem do AutomaticSize do painel; a animacao abre a
-	-- gaveta de 0 ate essa altura.
-	panel.Size = UDim2.fromOffset(panel.Size.X.Offset, 0)
-	task.defer(function()
-		local height = panel.AbsoluteSize.Y
-		if height > 0 then
-			tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, height) }, 0.22, Enum.EasingStyle.Quart)
-		else
-			panel.Size = UDim2.fromOffset(panel.Size.X.Offset, 0)
-		end
-		-- O canvas da coluna e recalculado: o submenu conta como
-		-- conteudo da aba.
-		refreshCanvas()
-	end)
-
-	openPanel = panel
-	openBurger = burger
-	tween(burger, { Rotation = 90 }, 0.2)
-	log("Submenu aberto: " .. tostring(title or "opcoes"))
-end
-
--- Switch on/off
-local function buildSwitch(card, state)
-	local holder = make("Frame", {
-		Size = UDim2.fromOffset(38, 20),
-		Position = UDim2.new(1, -48, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = state and Theme.Text or Theme.Stroke,
-		ZIndex = 6,
-	})
-	corner(holder, 10)
-	holder.Parent = card
-
-	local knob = make("Frame", {
-		Size = UDim2.fromOffset(14, 14),
-		Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Text,
-		ZIndex = 7,
-	})
-	corner(knob, 7)
-	-- Anel escuro: a bolinha e sempre BRANCA, mas continua a ver-se
-	-- quando o trilho fica branco (toggle ligado).
-	border(knob, Theme.Background, 1)
-	knob.Parent = holder
-
-	return holder, knob
-end
-
-local function applySwitch(holder, knob, state)
-	tween(holder, { BackgroundColor3 = state and Theme.Text or Theme.Stroke }, 0.16)
-	tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.16)
-end
-
--- CreateToggle: cartao com o icone ☰ a esquerda do texto e o switch
--- a direita. O ☰ abre o submenu (accordion) com os sliders e os
--- dropdowns do item.
---
--- As acoes registadas em ACTIONS sao chamadas quando o toggle muda:
--- e assim que o toggle "Show Keybinds" mostra/esconde o painel dos
--- atalhos.
-local ACTIONS = {}
-
-local function buildToggleCard(item, order)
-	local state = false
-
-	local card = make("TextButton", {
-		Name = randomName(),
-		Size = UDim2.fromOffset(0, GRID_CARD_H),
-		BackgroundColor3 = Theme.Surface2,
-		BorderSizePixel = 0,
-		Text = "",
-		AutoButtonColor = false,
-		LayoutOrder = order,
-		ZIndex = 5,
-	})
-	corner(card, 9)
-	border(card, Theme.Stroke, 1)
-
-	local burger = make("TextButton", {
-		Size = UDim2.fromOffset(26, 26),
-		Position = UDim2.new(0, 6, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		Text = "☰",
-		TextSize = 15,
-		Font = FONT_BOLD,
-		TextColor3 = (item.sliders or item.dropdowns) and Theme.Text or Theme.Muted,
-		AutoButtonColor = false,
-		ZIndex = 6,
-	})
-	burger.Parent = card
-
-	label(card, {
-		Position = UDim2.fromOffset(36, 0),
-		Size = UDim2.new(1, -92, 1, 0),
-		Text = item.label,
-		TextSize = 12,
-		Font = FONT_MED,
-		TextColor3 = Theme.Text,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 6,
-	})
-
-	local holder, knob = buildSwitch(card, state)
-
-	local function toggle()
-		state = not state
-		applySwitch(holder, knob, state)
-		log(string.format("%s -> %s", item.label, state and "ON" or "OFF"))
-		-- Acao associada ao toggle (ex: "Show Keybinds").
-		if item.action and type(ACTIONS[item.action]) == "function" then
-			ACTIONS[item.action](state)
-		end
-	end
-
-	burger.MouseButton1Click:Connect(function()
-		if item.sliders or item.dropdowns then
-			openDropdown(card, burger, item.sliders or {}, item.label, item.dropdowns or {})
-		else
-			log(item.label .. ": sem opcoes extras")
-		end
-	end)
-
-	card.MouseButton1Click:Connect(toggle)
-
-	card.MouseEnter:Connect(function()
-		tween(card, { BackgroundColor3 = Theme.Stroke }, 0.15)
-	end)
-
-	card.MouseLeave:Connect(function()
-		tween(card, { BackgroundColor3 = Theme.Surface2 }, 0.15)
-	end)
-
-	return card
-end
-
--- Cartao de botao
-local function buildButtonCard(item, order)
-	local isAccent = item.style == "accent"
-
-	local card = make("TextButton", {
-		Name = randomName(),
-		Size = UDim2.fromOffset(0, GRID_CARD_H),
-		BackgroundColor3 = isAccent and Theme.Text or Theme.Surface2,
-		BorderSizePixel = 0,
-		Text = "",
-		AutoButtonColor = false,
-		LayoutOrder = order,
-		ZIndex = 5,
-	})
-	corner(card, 9)
-	if not isAccent then
-		border(card, Theme.Stroke, 1)
-	end
-
-	label(card, {
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -20, 1, 0),
-		Text = item.label,
-		TextSize = 12,
-		Font = FONT_MED,
-		TextColor3 = Theme.Text,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 6,
-	})
-
-	card.MouseButton1Click:Connect(function()
-		log("Acao: " .. item.label)
-	end)
-
-	card.MouseEnter:Connect(function()
-		tween(card, {
-			BackgroundColor3 = isAccent
-				and Theme.Text:Lerp(Color3.fromRGB(0, 0, 0), 0.18)
-				or Theme.Stroke,
-		}, 0.15)
-	end)
-
-	card.MouseLeave:Connect(function()
-		tween(card, {
-			BackgroundColor3 = isAccent and Theme.Text or Theme.Surface2,
-		}, 0.15)
-	end)
-
-	return card
-end
-
--- Cartao de escolha (exclusiva dentro do grupo)
-local choiceGroups = {}
-
-local function buildChoiceCard(item, order)
-	local card = make("TextButton", {
-		Name = randomName(),
-		Size = UDim2.fromOffset(0, GRID_CARD_H),
-		BackgroundColor3 = Theme.Surface2,
-		BorderSizePixel = 0,
-		Text = "",
-		AutoButtonColor = false,
-		LayoutOrder = order,
-		ZIndex = 5,
-	})
-	corner(card, 9)
-
-	local stroke = border(card, Theme.Stroke, 1)
-
-	local text = label(card, {
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -24, 1, 0),
-		Text = item.label,
-		TextSize = 12,
-		Font = FONT_MED,
-		TextColor3 = Theme.Text,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 6,
-	})
-
-	local function setActive(isActive)
-		stroke.Color = isActive and Theme.Text or Theme.Stroke
-		card.BackgroundColor3 = isActive and Theme.Surface or Theme.Surface2
-		text.TextColor3 = Theme.Text
-	end
-
-	setActive(false)
-
-	card.MouseButton1Click:Connect(function()
-		local group = choiceGroups[item.group]
-		if group then
-			for _, other in ipairs(group) do
-				other.setActive(false)
-			end
-		end
-		setActive(true)
-		log("Selecao: " .. item.label)
-	end)
-
-	local group = choiceGroups[item.group]
-	if not group then
-		group = {}
-		choiceGroups[item.group] = group
-	end
-	table.insert(group, { setActive = setActive })
-
-	return card
-end
-
--- Cartao com input de texto
-local function buildInputCard(item, order)
 	local card = make("Frame", {
 		Name = randomName(),
-		Size = UDim2.fromOffset(0, GRID_CARD_H),
-		BackgroundColor3 = Theme.Surface2,
-		BorderSizePixel = 0,
-		LayoutOrder = order,
-		ZIndex = 5,
-	})
-	corner(card, 9)
-	border(card, Theme.Stroke, 1)
-
-	label(card, {
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.fromOffset(74, 16),
-		Text = item.label,
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 6,
-	})
-
-	local box = make("TextBox", {
-		Size = UDim2.new(1, -142, 0, 26),
-		Position = UDim2.new(0, 88, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Background,
-		Text = "",
-		PlaceholderText = item.placeholder or "...",
-		PlaceholderColor3 = Theme.Muted,
-		TextColor3 = Theme.Text,
-		TextSize = 11,
-		Font = FONT,
-		ClearTextOnFocus = false,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 6,
-	})
-	corner(box, 7)
-	border(box, Theme.Stroke, 1)
-	box.Parent = card
-
-	local addButton = make("TextButton", {
-		Size = UDim2.fromOffset(26, 26),
-		Position = UDim2.new(1, -38, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Text,
-		Text = "▶",
-		TextSize = 12,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Background,
-		AutoButtonColor = false,
-		ZIndex = 7,
-	})
-	corner(addButton, 7)
-	addButton.Parent = card
-
-	addButton.MouseButton1Click:Connect(function()
-		local value = box.Text
-		if value == "" then
-			value = box.PlaceholderText
-		end
-		log(string.format("%s -> %s", item.label, value))
-	end)
-
-	return card
-end
-
-local function buildItem(item, order)
-	if item.type == "toggle" then
-		return buildToggleCard(item, order)
-	elseif item.type == "button" then
-		return buildButtonCard(item, order)
-	elseif item.type == "choice" then
-		return buildChoiceCard(item, order)
-	elseif item.type == "input" then
-		return buildInputCard(item, order)
-	end
-	return nil
-end
-
---=====================================================================
--- COMPONENTES BBC HUB (estrutura da AirFlowLibrary, visual BBC Hub)
---
--- As quatro funcoes abaixo reproduzem a ESTRUTURA dos componentes da
--- AirFlowLibrary (cartao + chip a direita, popup de opcoes, captura de
--- tecla, toast animado), mas com o visual monocromatico do BBC Hub.
--- Nada e importado da biblioteca: e so a estrutura.
---=====================================================================
-
--- Cartao base de um control (Surface2, borda de 1 px, cantos suaves).
-local function createControlCard(parent, title, height)
-	local card = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, height or GRID_CARD_H),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, 9)
+	corner(card, CARD_RADIUS)
 	border(card, Theme.Stroke, 1)
-	card.Parent = parent
 
 	label(card, {
 		Position = UDim2.fromOffset(12, 0),
@@ -2056,23 +1596,15 @@ local function createControlCard(parent, title, height)
 		Text = tostring(title or ""),
 		TextSize = 11,
 		Font = FONT_MED,
-		TextColor3 = Theme.Muted,
+		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 6,
 	})
 
-	return card
-end
-
--- Dropdown: cartao com o valor a direita; ao clicar abre a lista de
--- opcoes (por baixo, ou por cima quando nao ha espaco).
-local function CreateDropdown(parent, title, options)
-	local card = createControlCard(parent, title)
-
-	local value = options and options[1] or ""
+	local value = options[1] or ""
 	local valueButton = make("TextButton", {
 		Name = randomName(),
-		Size = UDim2.fromOffset(120, 26),
+		Size = UDim2.fromOffset(110, 26),
 		Position = UDim2.new(1, -128, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
@@ -2106,13 +1638,7 @@ local function CreateDropdown(parent, title, options)
 		log(string.format("%s -> %s", tostring(title), tostring(option)))
 	end
 
-	valueButton.MouseButton1Click:Connect(function()
-		if openList then
-			closeDropdown()
-			return
-		end
-		closeDropdown()
-
+	local function openList()
 		local list = make("Frame", {
 			Name = randomName(),
 			Size = UDim2.fromOffset(120, (#options * 26) + 8),
@@ -2123,17 +1649,17 @@ local function CreateDropdown(parent, title, options)
 		})
 		corner(list, 8)
 		border(list, Theme.Stroke, 1)
-		list.Parent = overlay
+		list.Parent = Nexus.CurrentOverlay()
 
-		-- Posicao relativa ao painel de conteudo (o overlay vive dentro
-		-- dele), dividida pela escala da janela.
-		local origin = valueButton.AbsolutePosition - contentPanel.AbsolutePosition
+		local origin = valueButton.AbsolutePosition - Nexus.CurrentPage().AbsolutePosition
+		local x = (origin.X + valueButton.AbsoluteSize.X - 120) / UI_SCALE
 		local below = (origin.Y + valueButton.AbsoluteSize.Y) / UI_SCALE + 4
 		local above = (origin.Y - (#options * 26) - 8) / UI_SCALE
-		if below + (#options * 26) > (contentPanel.AbsoluteSize.Y / UI_SCALE) and above > 8 then
-			list.Position = UDim2.fromOffset((origin.X + valueButton.AbsoluteSize.X - 120) / UI_SCALE, above)
+		local room = Nexus.CurrentPage().AbsoluteSize.Y / UI_SCALE
+		if below + (#options * 26) > room and above > 8 then
+			list.Position = UDim2.fromOffset(x, above)
 		else
-			list.Position = UDim2.fromOffset((origin.X + valueButton.AbsoluteSize.X - 120) / UI_SCALE, below)
+			list.Position = UDim2.fromOffset(x, below)
 		end
 
 		for index, option in ipairs(options) do
@@ -2156,32 +1682,64 @@ local function CreateDropdown(parent, title, options)
 			optionButton.MouseEnter:Connect(function()
 				tween(optionButton, { BackgroundColor3 = Theme.Surface2 }, 0.12)
 			end)
-
 			optionButton.MouseLeave:Connect(function()
 				tween(optionButton, { BackgroundColor3 = Theme.Surface }, 0.12)
 			end)
 
 			optionButton.MouseButton1Click:Connect(function()
 				setValue(option)
-				closeDropdown()
+				Nexus.ClosePopups()
 			end)
 		end
 
-		openList = list
+		Nexus.SetPopup(list)
+	end
+
+	valueButton.MouseButton1Click:Connect(function()
+		if Nexus.GetPopup() then
+			Nexus.ClosePopups()
+			return
+		end
+		openList()
 	end)
 
-	return card, setValue, function()
-		return value
-	end
+	return {
+		Frame = card,
+		GetValue = function()
+			return value
+		end,
+		SetValue = setValue,
+	}
 end
 
--- Input: caixa de texto escura dentro do cartao.
-local function CreateInput(parent, title, placeholder)
-	local card = createControlCard(parent, title)
+-- ---------------------------------------------------------------------
+-- Nexus.CreateInput(parent, title, placeholder)
+-- ---------------------------------------------------------------------
+function Nexus.CreateInput(parent, title, placeholder)
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, CARD_RADIUS)
+	border(card, Theme.Stroke, 1)
+
+	label(card, {
+		Position = UDim2.fromOffset(12, 0),
+		Size = UDim2.fromOffset(120, 1, 0),
+		Text = tostring(title or ""),
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6,
+	})
 
 	local box = make("TextBox", {
 		Name = randomName(),
-		Size = UDim2.fromOffset(150, 26),
+		Size = UDim2.fromOffset(140, 26),
 		Position = UDim2.new(1, -128, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
@@ -2212,14 +1770,41 @@ local function CreateInput(parent, title, placeholder)
 		log(string.format("%s -> %s", tostring(title), tostring(getValue())))
 	end)
 
-	return card, getValue
+	return {
+		Frame = card,
+		GetValue = getValue,
+		SetValue = function(text)
+			box.Text = tostring(text)
+		end,
+	}
 end
 
--- Keybind: botao de tecla. Ao clicar fica a escutar e a proxima tecla
--- pressionada e a que fica escrita no botao.
-local function CreateKeybind(parent, title, key)
-	local card = createControlCard(parent, title)
+-- ---------------------------------------------------------------------
+-- Nexus.CreateKeybind(parent, title, defaultKey)
+-- ---------------------------------------------------------------------
+function Nexus.CreateKeybind(parent, title, defaultKey)
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, CARD_RADIUS)
+	border(card, Theme.Stroke, 1)
 
+	label(card, {
+		Position = UDim2.fromOffset(12, 0),
+		Size = UDim2.new(1, -140, 1, 0),
+		Text = tostring(title or ""),
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6,
+	})
+
+	local key = defaultKey or "..."
 	local chip = make("TextButton", {
 		Name = randomName(),
 		Size = UDim2.fromOffset(74, 26),
@@ -2237,7 +1822,7 @@ local function CreateKeybind(parent, title, key)
 
 	local chipLabel = label(chip, {
 		Size = UDim2.fromScale(1, 1),
-		Text = tostring(key or "..."),
+		Text = tostring(key),
 		TextSize = 11,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
@@ -2246,24 +1831,18 @@ local function CreateKeybind(parent, title, key)
 	})
 
 	local listening = false
-	local connection = nil
-
-	local function stopListening()
-		listening = false
-		connection = nil
-		chipLabel.Text = tostring(key or "...")
-		tween(chipLabel, { TextColor3 = Theme.Muted }, 0.15)
-	end
 
 	chip.MouseButton1Click:Connect(function()
 		if listening then
-			stopListening()
+			listening = false
+			chipLabel.Text = tostring(key)
 			return
 		end
 		listening = true
 		chipLabel.Text = "..."
 		tween(chipLabel, { TextColor3 = Theme.Text }, 0.15)
 
+		local connection
 		connection = UserInputService.InputBegan:Connect(function(input, processed)
 			if processed or not listening then
 				return
@@ -2272,23 +1851,265 @@ local function CreateKeybind(parent, title, key)
 			if name then
 				key = name
 				chipLabel.Text = name
-				log(string.format("%s -> %s", tostring(title), name))
+				log(string.format("%s -> %s", tostring(title), tostring(name)))
 			end
-			stopListening()
-			if connection then
-				connection:Disconnect()
-			end
+			listening = false
+			tween(chipLabel, { TextColor3 = Theme.Muted }, 0.15)
+			connection:Disconnect()
 		end)
 	end)
 
-	return card, function()
-		return key
-	end
+	return {
+		Frame = card,
+		GetValue = function()
+			return key
+		end,
+	}
 end
 
--- Toast animado (como o Notify da AirFlowLibrary): entra a deslizar,
--- fica um instante e desaparece.
-local function CreateNotification(text, duration)
+-- ---------------------------------------------------------------------
+-- Nexus.CreateToggle(parent, title, default, subElements)
+--
+-- Cartao com o icone "☰" (que abre o accordion), o texto e o switch.
+-- subElements = { {Type="Slider", ...}, {Type="Dropdown", ...} }
+-- ---------------------------------------------------------------------
+function Nexus.CreateToggle(parent, title, default, subElements, onChange)
+	subElements = subElements or {}
+
+	local card = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 5,
+	})
+	corner(card, CARD_RADIUS)
+	border(card, Theme.Stroke, 1)
+
+	local burger = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(26, 26),
+		Position = UDim2.new(0, 6, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Text = "☰",
+		TextSize = 15,
+		Font = FONT_BOLD,
+		TextColor3 = (#subElements > 0) and Theme.Text or Theme.Muted,
+		AutoButtonColor = false,
+		ZIndex = 6,
+	})
+	burger.Parent = card
+
+	label(card, {
+		Position = UDim2.fromOffset(36, 0),
+		Size = UDim2.new(1, -92, 1, 0),
+		Text = tostring(title or ""),
+		TextSize = 12,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6,
+	})
+
+	-- Switch (bolinha branca).
+	local state = default == true
+	local holder = make("Frame", {
+		Size = UDim2.fromOffset(38, 20),
+		Position = UDim2.new(1, -48, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = state and Theme.Text or Theme.Stroke,
+		ZIndex = 6,
+	})
+	corner(holder, 10)
+	holder.Parent = card
+
+	local knob = make("Frame", {
+		Size = UDim2.fromOffset(14, 14),
+		Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Text,
+		ZIndex = 7,
+	})
+	corner(knob, 7)
+	border(knob, Theme.Background, 1)
+	knob.Parent = holder
+
+	local function applySwitch()
+		tween(holder, { BackgroundColor3 = state and Theme.Text or Theme.Stroke }, 0.16)
+		tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.16)
+	end
+
+	card.MouseButton1Click:Connect(function()
+		state = not state
+		applySwitch()
+		log(string.format("%s -> %s", tostring(title), state and "ON" or "OFF"))
+		if type(onChange) == "function" then
+			onChange(state)
+		end
+	end)
+
+	card.MouseEnter:Connect(function()
+		tween(card, { BackgroundColor3 = Theme.Stroke }, 0.15)
+	end)
+	card.MouseLeave:Connect(function()
+		tween(card, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+	end)
+
+	-- Accordion: o painel abre por baixo do cartao e anima a altura.
+	local panel = nil
+	local open = false
+
+	local function closePanel()
+		if not panel then
+			return
+		end
+		open = false
+		local closing = panel
+		panel = nil
+		local animation = tween(closing, { Size = UDim2.fromOffset(closing.Size.X.Offset, 0) }, 0.2)
+		if animation and animation.Completed then
+			animation.Completed:Once(function()
+				if closing.Parent then
+					closing:Destroy()
+				end
+			end)
+		else
+			closing:Destroy()
+		end
+		tween(burger, { Rotation = 0 }, 0.2)
+		Nexus.RefreshCanvases()
+	end
+
+	local function openPanel()
+		if open then
+			closePanel()
+			return
+		end
+		open = true
+
+		panel = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.fromOffset((card.AbsoluteSize.X / UI_SCALE), 0),
+			Position = UDim2.fromOffset(0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Surface2,
+			ClipsDescendants = true,
+			ZIndex = 40,
+		})
+		corner(panel, 10)
+		border(panel, Theme.Stroke, 1)
+		panel.Parent = Nexus.CurrentOverlay()
+
+		local layout = make("UIListLayout", {
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+		layout.Parent = panel
+
+		local padding = make("UIPadding", {
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
+			PaddingTop = UDim.new(0, 10),
+			PaddingBottom = UDim.new(0, 12),
+		})
+		padding.Parent = panel
+
+		label(panel, {
+			Size = UDim2.new(1, 0, 0, 16),
+			Text = string.upper(tostring(title or "OPTIONS")),
+			TextSize = 10,
+			Font = FONT_BOLD,
+			TextColor3 = Theme.Muted,
+			LayoutOrder = 1,
+			ZIndex = 41,
+		})
+
+		for index, spec in ipairs(subElements) do
+			local holder2 = make("Frame", {
+				Name = randomName(),
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				LayoutOrder = index + 1,
+				ZIndex = 41,
+			})
+			holder2.Parent = panel
+
+			local kind = spec.Type or spec.Kind
+			if kind == "Slider" then
+				local slider = Nexus.CreateSlider(holder2, spec.Name, spec.Min, spec.Max, spec.Default)
+				slider.Frame.Parent = holder2
+			elseif kind == "Dropdown" then
+				local dropdown = Nexus.CreateDropdown(holder2, spec.Name, spec.Options)
+				dropdown.Frame.Parent = holder2
+			elseif kind == "Input" then
+				local input = Nexus.CreateInput(holder2, spec.Name, spec.Placeholder)
+				input.Frame.Parent = holder2
+			elseif kind == "Keybind" then
+				local keybind = Nexus.CreateKeybind(holder2, spec.Name, spec.Default)
+				keybind.Frame.Parent = holder2
+			elseif kind == "Toggle" then
+				local toggle = Nexus.CreateToggle(holder2, spec.Name, spec.Default, spec.SubElements)
+				toggle.Frame.Parent = holder2
+			end
+		end
+
+		-- Posicao: abaixo do cartao, em unidades da pagina.
+		local page = Nexus.CurrentPage()
+		local origin = card.AbsolutePosition - page.AbsolutePosition
+		panel.Position = UDim2.fromOffset(
+			origin.X / UI_SCALE,
+			(origin.Y + card.AbsoluteSize.Y) / UI_SCALE + 6
+		)
+
+		-- A altura vem do AutomaticSize, mas em pixels JA escalados: e
+		-- preciso dividir pela escala (mesma tecnica do CanvasSize).
+		task.defer(function()
+			if not panel then
+				return
+			end
+			local height = (panel.AbsoluteSize.Y / UI_SCALE)
+			if height > 0 then
+				tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, height) }, 0.22, Enum.EasingStyle.Quart)
+			end
+			tween(burger, { Rotation = 90 }, 0.2)
+			Nexus.RefreshCanvases()
+		end)
+	end
+
+	burger.MouseButton1Click:Connect(function()
+		if #subElements > 0 then
+			openPanel()
+		else
+			log(tostring(title) .. ": sem opcoes extras")
+		end
+	end)
+
+	return {
+		Frame = card,
+		GetState = function()
+			return state
+		end,
+		SetState = function(value)
+			state = value == true
+			applySwitch()
+		end,
+	}
+end
+
+-- ---------------------------------------------------------------------
+-- Nexus.CreateNotification(text)
+--
+-- Toast que entra a deslizar no canto da tela e desaparece.
+-- ---------------------------------------------------------------------
+function Nexus.CreateNotification(text, duration)
 	local holder = make("Frame", {
 		Name = randomName(),
 		Size = UDim2.fromOffset(280, 0),
@@ -2298,7 +2119,7 @@ local function CreateNotification(text, duration)
 		BackgroundTransparency = 1,
 		ZIndex = 40,
 	})
-	holder.Parent = screenGui
+	holder.Parent = NexusWindow.Gui
 
 	local toast = make("Frame", {
 		Name = randomName(),
@@ -2315,7 +2136,7 @@ local function CreateNotification(text, duration)
 	label(toast, {
 		Position = UDim2.fromOffset(14, 10),
 		Size = UDim2.new(1, -28, 0, 16),
-		Text = "BBC HUB",
+		Text = "NEXUS HUB",
 		TextSize = 11,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Text,
@@ -2333,8 +2154,8 @@ local function CreateNotification(text, duration)
 		ZIndex = 42,
 	})
 
-	-- Entra a deslizar e desvanece ao fim de uns segundos.
 	tween(holder, { Position = UDim2.fromOffset(0, 0) }, 0.26, Enum.EasingStyle.Quart)
+
 	task.delay(duration or 3.5, function()
 		if not holder.Parent then
 			return
@@ -2354,12 +2175,117 @@ local function CreateNotification(text, duration)
 	return toast
 end
 
+-- ---------------------------------------------------------------------
+-- POPUPS (uma lista de opcoes de cada vez)
+-- ---------------------------------------------------------------------
+local popup = nil
+
+function Nexus.SetPopup(object)
+	popup = object
+end
+
+function Nexus.GetPopup()
+	return popup
+end
+
+function Nexus.ClosePopups()
+	if popup then
+		local object = popup
+		popup = nil
+		if object.Parent then
+			object:Destroy()
+		end
+	end
+end
+
+-- Pagina e overlay da aba activa (para os popups).
+function Nexus.CurrentPage()
+	if currentTab then
+		return currentTab.Page
+	end
+	return NexusWindow.Content
+end
+
+function Nexus.CurrentOverlay()
+	if currentTab then
+		return currentTab.Overlay
+	end
+	return NexusWindow.Content
+end
+
 --=====================================================================
--- ABA HOME
---
--- Estrutura copiada da Home da AirFlowLibrary (banner, cartao de
--- estado, atalho e creditos), com o visual monocromatico do BBC Hub.
+-- MENU - MONTAGEM DAS ABAS (usando so a biblioteca NexusUI)
 --=====================================================================
+
+local window = Nexus.CreateWindow("NEXUS")
+
+-- Duas colunas dentro de uma pagina (usado na HOME).
+local function buildColumns(body)
+	local columns = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 5,
+	})
+	columns.Parent = body
+
+	local layout = make("UIListLayout", {
+		Padding = UDim.new(0, GRID_GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		FillDirection = Enum.FillDirection.Horizontal,
+	})
+	layout.Parent = columns
+
+	local function column(order)
+		local frame = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.new(0.5, -(GRID_GAP / 2), 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BorderSizePixel = 0,
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			ZIndex = 5,
+		})
+		frame.Parent = columns
+
+		local columnLayout = make("UIListLayout", {
+			Padding = UDim.new(0, GRID_ROW_GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+		columnLayout.Parent = frame
+
+		return frame
+	end
+
+	return columns, column(1), column(2)
+end
+
+-- Cartao de texto (banner, estado, creditos).
+local function infoCard(parent)
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, 12)
+	border(card, Theme.Stroke, 1)
+	card.Parent = parent
+
+	local padding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	padding.Parent = card
+
+	return card
+end
 
 local function detectExecutor()
 	local ok, name = pcall(function()
@@ -2378,30 +2304,14 @@ local function detectExecutor()
 end
 
 local function detectPlatform()
-	if IS_TOUCH then
+	if UserInputService.TouchEnabled then
 		return "Mobile"
 	end
 	return "PC"
 end
 
--- Cartao generico da Home (superficie escura, borda de 1 px).
-local function homeCard(parent, height)
-	local card = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, height or 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
-		ZIndex = 5,
-	})
-	corner(card, 12)
-	border(card, Theme.Stroke, 1)
-	card.Parent = parent
-	return card
-end
-
--- Linha "rotulo: valor" do cartao de estado.
-local function homeRow(parent, title, value, muted)
+-- Linha "rotulo: valor".
+local function infoRow(parent, title, value, muted)
 	local row = make("Frame", {
 		Name = randomName(),
 		Size = UDim2.new(1, -28, 0, 20),
@@ -2435,65 +2345,18 @@ local function homeRow(parent, title, value, muted)
 	return row
 end
 
--- Duas colunas lado a lado (como no resto do menu).
-local function buildColumnLayout()
-	local columns = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		ZIndex = 5,
-	})
-	columns.Parent = scrollBody
+--=====================================================================
+-- ABA HOME
+--=====================================================================
+local homeTab = Nexus.CreateTab("HOME")
+do
+	local _, left, right = buildColumns(homeTab.Body)
 
-	local columnsLayout = make("UIListLayout", {
-		Padding = UDim.new(0, GRID_GAP),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		FillDirection = Enum.FillDirection.Horizontal,
-	})
-	columnsLayout.Parent = columns
-
-	local function column(order)
-		local frame = make("Frame", {
-			Name = randomName(),
-			Size = UDim2.new(0.5, -(GRID_GAP / 2), 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BorderSizePixel = 0,
-			BackgroundTransparency = 1,
-			LayoutOrder = order,
-			ZIndex = 5,
-		})
-		frame.Parent = columns
-
-		local layout = make("UIListLayout", {
-			Padding = UDim.new(0, GRID_ROW_GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		})
-		layout.Parent = frame
-
-		return frame
-	end
-
-	return columns, column(1), column(2)
-end
-
-local function buildHome()
-	local _, left, right = buildColumnLayout()
-
-	-- BANNER DE BOAS-VINDAS -------------------------------------------
-	local banner = homeCard(left)
-	local bannerPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 16),
-		PaddingRight = UDim.new(0, 16),
-		PaddingTop = UDim.new(0, 16),
-		PaddingBottom = UDim.new(0, 16),
-	})
-	bannerPadding.Parent = banner
-
+	-- Banner
+	local banner = infoCard(left)
 	label(banner, {
 		Size = UDim2.new(1, 0, 0, 22),
-		Text = "Bem-vindo",
+		Text = "NexusHub v1.0",
 		TextSize = 18,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Text,
@@ -2502,7 +2365,7 @@ local function buildHome()
 
 	label(banner, {
 		Size = UDim2.new(1, 0, 0, 16),
-		Text = "BBC HUB  •  PROJECT DELTA",
+		Text = "BBC HUB STYLE  •  PROJECT DELTA",
 		TextSize = 11,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
@@ -2527,16 +2390,8 @@ local function buildHome()
 		ZIndex = 6,
 	})
 
-	-- CART DE ESTADO --------------------------------------------------
-	local status = homeCard(left)
-	local statusPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	statusPadding.Parent = status
-
+	-- Card de status
+	local status = infoCard(left)
 	label(status, {
 		Size = UDim2.new(1, 0, 0, 16),
 		Text = "STATUS",
@@ -2546,12 +2401,12 @@ local function buildHome()
 		ZIndex = 6,
 	})
 
-	homeRow(status, "Jogador", LocalPlayer.DisplayName)
-	homeRow(status, "Username", "@" .. LocalPlayer.Name, true)
-	homeRow(status, "Executor", detectExecutor())
-	homeRow(status, "Plataforma", detectPlatform())
+	infoRow(status, "Jogador", LocalPlayer.DisplayName)
+	infoRow(status, "Username", "@" .. LocalPlayer.Name, true)
+	infoRow(status, "Executor", detectExecutor())
+	infoRow(status, "Plataforma", detectPlatform())
 
-	-- BOTAO JOIN DISCORD ----------------------------------------------
+	-- Botao Join Discord
 	local discord = make("TextButton", {
 		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
@@ -2564,11 +2419,11 @@ local function buildHome()
 		AutoButtonColor = false,
 		ZIndex = 5,
 	})
-	corner(discord, 9)
+	corner(discord, CARD_RADIUS)
 	discord.Parent = right
 
 	discord.MouseButton1Click:Connect(function()
-		CreateNotification("A abrir o Discord do BBC Hub...")
+		Nexus.CreateNotification("A abrir o Discord do NexusHub...")
 		log("Discord: a abrir o convite")
 	end)
 
@@ -2580,16 +2435,8 @@ local function buildHome()
 		tween(discord, { BackgroundColor3 = Theme.Text }, 0.15)
 	end)
 
-	-- CREDITOS --------------------------------------------------------
-	local credits = homeCard(right)
-	local creditsPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	creditsPadding.Parent = credits
-
+	-- Creditos
+	local credits = infoCard(right)
 	label(credits, {
 		Size = UDim2.new(1, 0, 0, 16),
 		Text = "CREDITOS",
@@ -2601,7 +2448,7 @@ local function buildHome()
 
 	label(credits, {
 		Size = UDim2.new(1, 0, 0, 16),
-		Text = "BBC Hub  •  Project Delta",
+		Text = "NexusHub  •  Project Delta",
 		TextSize = 11,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
@@ -2610,7 +2457,7 @@ local function buildHome()
 
 	label(credits, {
 		Size = UDim2.new(1, 0, 0, 16),
-		Text = "Interface por guivn  •  v1.1",
+		Text = "Interface por guivn  •  v1.0",
 		TextSize = 10,
 		Font = FONT,
 		TextColor3 = Theme.Muted,
@@ -2625,524 +2472,237 @@ local function buildHome()
 		TextColor3 = Theme.Muted,
 		ZIndex = 6,
 	})
-
-	refreshCanvas()
 end
 
 --=====================================================================
--- ABA SETTINGS (com os componentes da AirFlow adaptedos)
+-- ABA VISUALS
 --=====================================================================
+local visualsTab = Nexus.CreateTab("VISUALS")
+do
+	local section = Nexus.CreateSection(visualsTab.Body, "WORLD")
 
-local function buildSettings()
-	local _, left, right = buildColumnLayout()
-
-	-- PAINEL: os toggles que mexem na propria interface
-	local panelCard = homeCard(left)
-	local panelPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
+	local fullbright = Nexus.CreateToggle(section.Grid, "Fullbright", false, {
+		{ Type = "Slider", Name = "Intensity", Min = 0, Max = 100, Default = 50 },
 	})
-	panelPadding.Parent = panelCard
+	section:Add(fullbright.Frame)
 
-	label(panelCard, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "PAINEL",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
+	local crosshair = Nexus.CreateToggle(section.Grid, "Crosshair", false, {
+		{ Type = "Slider", Name = "Size", Min = 0, Max = 50, Default = 10 },
 	})
+	section:Add(crosshair.Frame)
 
-	local toggles = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		LayoutOrder = 2,
-		ZIndex = 5,
-	})
-	toggles.Parent = panelCard
-
-	local togglesLayout = make("UIListLayout", {
-		Padding = UDim.new(0, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	})
-	togglesLayout.Parent = toggles
-
-	-- Este e o toggle que mostra/esconde o painel de keybinds.
-	local keybindsToggle = buildToggleCard({ type = "toggle", label = "Show Keybinds", action = "keybinds" }, 1)
-	keybindsToggle.Parent = toggles
-
-	local watermarkToggle = buildToggleCard({ type = "toggle", label = "Show Watermark" }, 2)
-	watermarkToggle.Parent = toggles
-
-	-- Perfil (dropdown)
-	local profileCard = homeCard(left)
-	local profilePadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	profilePadding.Parent = profileCard
-
-	label(profileCard, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "PERFIL",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	local dropdownHolder = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
-		BackgroundTransparency = 1,
-		LayoutOrder = 2,
-		ZIndex = 5,
-	})
-	dropdownHolder.Parent = profileCard
-
-	CreateDropdown(dropdownHolder, "Interface", { "default", "compact", "cozy" })
-
-	-- Atalho de tecla (keybind)
-	local keyCard = homeCard(left)
-	local keyPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	keyPadding.Parent = keyCard
-
-	label(keyCard, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "ATALHOS",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	local keyHolder = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
-		BackgroundTransparency = 1,
-		LayoutOrder = 2,
-		ZIndex = 5,
-	})
-	keyHolder.Parent = keyCard
-
-	CreateKeybind(keyHolder, "Abrir menu", "RShift")
-
-	-- Webhook (input)
-	local inputCard = homeCard(right)
-	local inputPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-	})
-	inputPadding.Parent = inputCard
-
-	label(inputCard, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "INTEGRACOES",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	local inputHolder = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
-		BackgroundTransparency = 1,
-		LayoutOrder = 2,
-		ZIndex = 5,
-	})
-	inputHolder.Parent = inputCard
-
-	CreateInput(inputHolder, "Webhook URL", "https://discord.com/...")
-
-	-- Botao de teste da notificacao
-	local notifyButton = make("TextButton", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
-		Text = "Testar notificacao",
-		TextSize = 12,
-		Font = FONT_MED,
-		TextColor3 = Theme.Text,
-		AutoButtonColor = false,
-		ZIndex = 5,
-	})
-	corner(notifyButton, 9)
-	border(notifyButton, Theme.Stroke, 1)
-	notifyButton.Parent = right
-
-	notifyButton.MouseButton1Click:Connect(function()
-		CreateNotification("Notificacao de teste do BBC Hub.")
-		log("Notificacao: teste")
-	end)
-
-	notifyButton.MouseEnter:Connect(function()
-		tween(notifyButton, { BackgroundColor3 = Theme.Stroke }, 0.15)
-	end)
-
-	notifyButton.MouseLeave:Connect(function()
-		tween(notifyButton, { BackgroundColor3 = Theme.Surface2 }, 0.15)
-	end)
-
-	refreshCanvas()
+	local fov = Nexus.CreateToggle(section.Grid, "FOV Circle", false)
+	section:Add(fov.Frame)
 end
 
 --=====================================================================
--- SECCOES
+-- ABA PLAYER
 --=====================================================================
+local playerTab = Nexus.CreateTab("PLAYER")
+do
+	local section = Nexus.CreateSection(playerTab.Body, "PLAYERS ESP")
 
-local function buildSection(sectionData, order)
-	local section = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		LayoutOrder = order,
-		ZIndex = 5,
+	local boxes = Nexus.CreateToggle(section.Grid, "Boxes", false, {
+		{ Type = "Dropdown", Name = "Style", Options = { "Outline", "Corner", "Full" }, Default = "Outline" },
 	})
-	section.Parent = scrollBody
+	section:Add(boxes.Frame)
 
-	local sectionLayout = make("UIListLayout", {
-		Padding = UDim.new(0, 10),
-		SortOrder = Enum.SortOrder.LayoutOrder,
+	local nametags = Nexus.CreateToggle(section.Grid, "Name Tags", false, {
+		{ Type = "Slider", Name = "Max Distance", Min = 0, Max = 2000, Default = 500 },
 	})
-	sectionLayout.Parent = section
+	section:Add(nametags.Frame)
 
-	local header = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 20),
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		LayoutOrder = 1,
-		ZIndex = 5,
-	})
-	header.Parent = section
-
-	-- Titulo em maiusculas + uma linha fina que preenche o resto do
-	-- espaco a direita (e o que da o ar "BBC Hub" as seccoes).
-	local titleText = string.upper(sectionData.name)
-	local titleWidth = math.max(60, (#titleText * 7) + 6)
-
-	label(header, {
-		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(titleWidth, 16),
-		Text = titleText,
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	local headerLine = make("Frame", {
-		Size = UDim2.new(1, -(titleWidth + 14), 0, 1),
-		Position = UDim2.fromOffset(titleWidth + 10, 8),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Stroke,
-		ZIndex = 6,
-	})
-	headerLine.Parent = header
-
-	-- A altura da grelha e calculada a mao: o UIGridLayout nao reajusta
-	-- o tamanho do pai, por isso nao podemos depender de AutomaticSize.
-	local rows = math.ceil(#sectionData.items / 2)
-	local gridHeight = math.max(0, (rows * GRID_CARD_H) + ((rows - 1) * GRID_ROW_GAP))
-
-	local grid = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, gridHeight),
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		LayoutOrder = 2,
-		ZIndex = 5,
-	})
-	grid.Parent = section
-
-	local gridLayout = make("UIGridLayout", {
-		CellSize = UDim2.new(0.5, -6, 0, GRID_CARD_H),
-		CellPadding = UDim2.new(0, GRID_GAP, 0, GRID_ROW_GAP),
-		FillDirection = Enum.FillDirection.Horizontal,
-		FillDirectionMaxCells = 2,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		HorizontalAlignment = Enum.HorizontalAlignment.Left,
-	})
-	gridLayout.Parent = grid
-
-	for index, item in ipairs(sectionData.items) do
-		local card = buildItem(item, index)
-		if card then
-			card.Parent = grid
-		end
-	end
-
-	return section
+	local tracers = Nexus.CreateToggle(section.Grid, "Tracers", false)
+	section:Add(tracers.Frame)
 end
 
 --=====================================================================
--- ABAS / SIDEBAR
+-- ABA COMBAT
 --=====================================================================
+local combatTab = Nexus.CreateTab("COMBAT")
+do
+	local aim = Nexus.CreateSection(combatTab.Body, "AIM")
 
-local currentTab = 1
-local tabRefs = {}
-
--- Icone da aba: um quadrado ROXO de 15x15 com cantos arredondados, do
--- lado esquerdo do texto. E o "falso icone" do BBC Hub (nao ha pack de
--- icones no single file).
-local TAB_ICON_SIZE = 15
-local TAB_ICON_X = 2
-local TAB_TEXT_X = 25
-
-local function buildTabIcon(parent)
-	local tile = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.fromOffset(TAB_ICON_SIZE, TAB_ICON_SIZE),
-		Position = UDim2.new(0, TAB_ICON_X, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Stroke,
-		ZIndex = 6,
+	local silentAim = Nexus.CreateToggle(aim.Grid, "Silent Aim", false, {
+		{ Type = "Slider", Name = "Hit Chance", Min = 0, Max = 100, Default = 50 },
+		{ Type = "Dropdown", Name = "Target Part", Options = { "Head", "Torso", "Nearest" }, Default = "Head" },
 	})
-	corner(tile, 4)
-	tile.Parent = parent
+	aim:Add(silentAim.Frame)
 
-	return tile
-end
-
-local function selectTab(index)
-	currentTab = index
-	for i, ref in ipairs(tabRefs) do
-		local active = (i == index)
-		ref.Button.BackgroundColor3 = active and Theme.Surface2 or Theme.Surface
-		ref.Text.TextColor3 = active and Theme.Text or Theme.Muted
-		ref.Indicator.Visible = active
-	end
-end
-
-local function renderTab(index)
-	closeDropdown()
-	clearChildren(scrollBody)
-	for key in pairs(choiceGroups) do
-		choiceGroups[key] = nil
-	end
-
-	local tabData = TABS[index]
-	if tabData.custom == "home" then
-		buildHome()
-	elseif tabData.custom == "settings" then
-		buildSettings()
-	else
-		for order, sectionData in ipairs(tabData.sections) do
-			buildSection(sectionData, order)
-		end
-	end
-	refreshCanvas()
-end
-
-for index, tabData in ipairs(TABS) do
-	local button = make("TextButton", {
-		Name = randomName(),
-		-- O botao e filho da SIDEBAR: e o UIListLayout dela que o poe
-		-- no sitio, com o mesmo espacamento para todas as abas.
-		Size = UDim2.new(1, -10, 0, 35),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface,
-		Text = "",
-		AutoButtonColor = false,
-		Visible = true,
-		LayoutOrder = index + 1,
-		ZIndex = 5,
+	local aimbot = Nexus.CreateToggle(aim.Grid, "Aimbot", false, {
+		{ Type = "Slider", Name = "Smoothness", Min = 0, Max = 100, Default = 40 },
+		{ Type = "Slider", Name = "FOV", Min = 0, Max = 360, Default = 120 },
 	})
-	corner(button, 8)
-	button.Parent = sidebar
+	aim:Add(aimbot.Frame)
 
-	local indicator = make("Frame", {
-		Size = UDim2.fromOffset(3, 16),
-		Position = UDim2.new(0, -6, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Text,
-		Visible = false,
-		ZIndex = 6,
+	local autoShoot = Nexus.CreateToggle(aim.Grid, "Auto Shoot", false)
+	aim:Add(autoShoot.Frame)
+
+	local sticky = Nexus.CreateToggle(aim.Grid, "Sticky Target", false)
+	aim:Add(sticky.Frame)
+
+	local teamCheck = Nexus.CreateToggle(aim.Grid, "Team Check", false, {
+		{ Type = "Dropdown", Name = "Team Mode", Options = { "Skip", "Ignore", "Block" }, Default = "Skip" },
 	})
-	corner(indicator, 2)
-	indicator.Parent = button
+	aim:Add(teamCheck.Frame)
 
-	local icon = buildTabIcon(button)
-
-	local text = label(button, {
-		Position = UDim2.fromOffset(TAB_TEXT_X, 0),
-		Size = UDim2.new(1, -(TAB_TEXT_X + 8), 1, 0),
-		Text = tabData.name,
-		TextSize = 12,
-		Font = FONT_MED,
-		TextColor3 = Theme.Muted,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		ZIndex = 6,
+	local fovCircle = Nexus.CreateToggle(aim.Grid, "FOV Circle", false, {
+		{ Type = "Slider", Name = "Circle Size", Min = 10, Max = 720, Default = 120 },
 	})
+	aim:Add(fovCircle.Frame)
 
-	-- IMPORTANT: a troca de aba chama a funcao directamente.
-	-- Nunca :Fire() num evento - isso despacha o evento e pode
-	-- disparar outros handlers.
-	button.MouseButton1Click:Connect(function()
-		selectTab(index)
-		renderTab(index)
-		log("Aba: " .. tabData.name)
-	end)
+	local trigger = Nexus.CreateSection(combatTab.Body, "TRIGGERBOT")
+	local triggerbot = Nexus.CreateToggle(trigger.Grid, "Triggerbot", false, {
+		{ Type = "Slider", Name = "Triggerbot Distance", Min = 0, Max = 1000, Default = 50 },
+	})
+	trigger:Add(triggerbot.Frame)
 
-	button.MouseEnter:Connect(function()
-		if not indicator.Visible then
-			tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
-		end
-	end)
+	local kill = Nexus.CreateSection(combatTab.Body, "KILL AURA")
+	local killAura = Nexus.CreateToggle(kill.Grid, "Kill Aura", false, {
+		{ Type = "Slider", Name = "Kill Aura Range", Min = 0, Max = 100, Default = 10 },
+		{ Type = "Dropdown", Name = "Attack Type", Options = { "Power Attack", "Normal", "Heavy" }, Default = "Power Attack" },
+	})
+	kill:Add(killAura.Frame)
 
-	button.MouseLeave:Connect(function()
-		if not indicator.Visible then
-			tween(button, { BackgroundColor3 = Theme.Surface }, 0.15)
-		end
-	end)
+	local gun = Nexus.CreateSection(combatTab.Body, "GUN")
+	local noRecoil = Nexus.CreateToggle(gun.Grid, "No Recoil", false, {
+		{ Type = "Slider", Name = "Recoil Power", Min = 0, Max = 100, Default = 100 },
+	})
+	gun:Add(noRecoil.Frame)
 
-	tabRefs[index] = { Button = button, Indicator = indicator, Text = text, Icon = icon }
+	local fireRate = Nexus.CreateToggle(gun.Grid, "Fire Rate", false, {
+		{ Type = "Slider", Name = "Rate", Min = 0, Max = 100, Default = 50 },
+	})
+	gun:Add(fireRate.Frame)
+
+	local autoReload = Nexus.CreateToggle(gun.Grid, "Auto Reload", false, {
+		{ Type = "Slider", Name = "Reload Delay", Min = 0, Max = 1000, Default = 100 },
+	})
+	gun:Add(autoReload.Frame)
+
+	local fakeScope = Nexus.CreateToggle(gun.Grid, "Fake Scope", false, {
+		{ Type = "Slider", Name = "Zoom", Min = 1, Max = 10, Default = 3 },
+	})
+	gun:Add(fakeScope.Frame)
 end
-
--- Rodape da sidebar. Vive na JANELA (nao na sidebar) para o UIListLayout
--- da sidebar nao o arrastar para o fluxo das abas.
-local sidebarFooter = label(window, {
-	Name = "SidebarFooter",
-	Size = UDim2.fromOffset(SIDEBAR_W - 36, 16),
-	Position = UDim2.new(0, 18, 1, -32),
-	Text = "v1.1.0 • SINGLE FILE",
-	TextSize = 9,
-	Font = FONT,
-	TextColor3 = Theme.Muted,
-	ZIndex = 4,
-})
 
 --=====================================================================
--- CARD DE PERFIL (INFERIOR ESQUERDO DA JANELA)
+-- ABA MISC
+--=====================================================================
+local miscTab = Nexus.CreateTab("MISC")
+do
+	local misc = Nexus.CreateSection(miscTab.Body, "MISC")
+
+	local fastTrade = Nexus.CreateToggle(misc.Grid, "Fast Trade", false, {
+		{ Type = "Slider", Name = "Trade Delay", Min = 0, Max = 1000, Default = 100 },
+	})
+	misc:Add(fastTrade.Frame)
+
+	local panic = Nexus.CreateToggle(misc.Grid, "Panic Mode", false, {
+		{ Type = "Dropdown", Name = "Panic Action", Options = { "Close Menu", "Hide HUD", "Reset" }, Default = "Close Menu" },
+	})
+	misc:Add(panic.Frame)
+
+	local passDoor = Nexus.CreateToggle(misc.Grid, "Pass Door", false, {
+		{ Type = "Toggle", Name = "Auto Open", Default = true },
+	})
+	misc:Add(passDoor.Frame)
+
+	local screenEffects = Nexus.CreateToggle(misc.Grid, "Screen Effects", false, {
+		{ Type = "Dropdown", Name = "Effect", Options = { "None", "Blur", "Vignette" }, Default = "None" },
+	})
+	misc:Add(screenEffects.Frame)
+
+	local reportNotify = Nexus.CreateToggle(misc.Grid, "Report Notify", false)
+	misc:Add(reportNotify.Frame)
+
+	local joinNotify = Nexus.CreateToggle(misc.Grid, "Join Notify", false)
+	misc:Add(joinNotify.Frame)
+
+	local sounds = Nexus.CreateSection(miscTab.Body, "SOUNDS")
+	local soundInput = Nexus.CreateInput(sounds.Grid, "Add Sound ID", "rbxassetid://...")
+	sounds:Add(soundInput.Frame)
+
+	local jump = Nexus.CreateToggle(sounds.Grid, "Jump", false, {
+		{ Type = "Slider", Name = "Volume", Min = 0, Max = 100, Default = 50 },
+	})
+	sounds:Add(jump.Frame)
+
+	local footsteps = Nexus.CreateToggle(sounds.Grid, "Footsteps", false, {
+		{ Type = "Slider", Name = "Volume", Min = 0, Max = 100, Default = 50 },
+	})
+	sounds:Add(footsteps.Frame)
+
+	local detect = Nexus.CreateSection(miscTab.Body, "DETECT")
+	local contentCreator = Nexus.CreateToggle(detect.Grid, "Content Creator", false)
+	detect:Add(contentCreator.Frame)
+
+	local tester = Nexus.CreateToggle(detect.Grid, "Tester", false)
+	detect:Add(tester.Frame)
+
+	local moderator = Nexus.CreateToggle(detect.Grid, "Moderator", false)
+	detect:Add(moderator.Frame)
+
+	local cheater = Nexus.CreateToggle(detect.Grid, "Cheater", false)
+	detect:Add(cheater.Frame)
+
+	local vault = Nexus.CreateSection(miscTab.Body, "VAULT SORT")
+	local sortValue = Nexus.CreateToggle(vault.Grid, "Sort By Value", false, {
+		{ Type = "Dropdown", Name = "Order", Options = { "High to Low", "Low to High" }, Default = "High to Low" },
+	})
+	vault:Add(sortValue.Frame)
+
+	local sortType = Nexus.CreateToggle(vault.Grid, "Sort By Type", false, {
+		{ Type = "Dropdown", Name = "Order", Options = { "A to Z", "Z to A" }, Default = "A to Z" },
+	})
+	vault:Add(sortType.Frame)
+
+	local sortName = Nexus.CreateToggle(vault.Grid, "Sort By Name", false, {
+		{ Type = "Dropdown", Name = "Order", Options = { "A to Z", "Z to A" }, Default = "A to Z" },
+	})
+	vault:Add(sortName.Frame)
+
+	local inventory = Nexus.CreateSection(miscTab.Body, "INVENTORY VIEWER")
+	local showInventory = Nexus.CreateToggle(inventory.Grid, "Show Inventory", false)
+	inventory:Add(showInventory.Frame)
+end
+
+--=====================================================================
+-- ABA SETTINGS
 --
--- Preso ao canto inferior esquerdo da janela principal (esta e uma
--- janela, nao um painel solto no ecra).
+-- Mantem o toggle "Show Keybinds" (o painel dos atalhos so aparece
+-- com ele ligado) e mostra os componentes da biblioteca.
 --=====================================================================
+local setKeybindsVisible = function() end
 
-local PROFILE_W, PROFILE_H = 180, 74
+local settingsTab = Nexus.CreateTab("SETTINGS")
+do
+	local panel = Nexus.CreateSection(settingsTab.Body, "PAINEL")
 
-local profile = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(PROFILE_W, PROFILE_H),
-	AnchorPoint = Vector2.new(0, 1),
-	Position = UDim2.new(0, 15, 1, -15),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface2,
-	Active = true,
-	-- Acima da sidebar e do conteudo.
-	ZIndex = 6,
-})
-corner(profile, 12)
-border(profile, Theme.Stroke, 1)
-profile.Parent = window
+	local keybindsToggle = Nexus.CreateToggle(panel.Grid, "Show Keybinds", false, nil, function(state)
+		setKeybindsVisible(state)
+		log("Keybinds: " .. (state and "visiveis" or "escondidos"))
+	end)
+	panel:Add(keybindsToggle.Frame)
 
-local avatar = make("ImageLabel", {
-	Name = randomName(),
-	Size = UDim2.fromOffset(52, 52),
-	Position = UDim2.new(0, 10, 0.5, 0),
-	AnchorPoint = Vector2.new(0, 0.5),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface,
-	ScaleType = Enum.ScaleType.Crop,
-	ZIndex = 7,
-})
-corner(avatar, 10)
-border(avatar, Theme.Stroke, 1)
-avatar.Parent = profile
+	local interface = Nexus.CreateSection(settingsTab.Body, "INTERFACE")
 
-local avatarInitial = make("TextLabel", {
-	Name = "Lbl",
-	Size = UDim2.fromScale(1, 1),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	Text = string.sub(string.upper(LocalPlayer.Name), 1, 1),
-	TextSize = 18,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Muted,
-	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 8,
-})
-avatarInitial.Parent = avatar
+	local dropdown = Nexus.CreateDropdown(interface.Grid, "Interface", { "default", "compact", "cozy" })
+	interface:Add(dropdown.Frame)
 
-pcall(function()
-	local thumbnail = Players:GetUserThumbnailAsync(
-		LocalPlayer.UserId,
-		Enum.ThumbnailType.HeadShot,
-		Enum.ThumbnailSize.Size100x100
-	)
-	if thumbnail and thumbnail ~= "" then
-		avatar.Image = thumbnail
-		avatarInitial.Visible = false
-	end
-end)
+	local keybind = Nexus.CreateKeybind(interface.Grid, "Abrir menu", "RShift")
+	interface:Add(keybind.Frame)
 
-label(profile, {
-	Size = UDim2.fromOffset(PROFILE_W - 70, 18),
-	Position = UDim2.new(0, 62, 0, 14),
-	Text = LocalPlayer.DisplayName,
-	TextSize = 12,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
-	TextTruncate = Enum.TextTruncate.AtEnd,
-	ZIndex = 7,
-})
+	local webhook = Nexus.CreateInput(interface.Grid, "Webhook URL", "https://discord.com/...")
+	interface:Add(webhook.Frame)
 
-label(profile, {
-	Size = UDim2.fromOffset(PROFILE_W - 70, 14),
-	Position = UDim2.new(0, 62, 0, 32),
-	Text = "@" .. LocalPlayer.Name,
-	TextSize = 10,
-	Font = FONT,
-	TextColor3 = Theme.Muted,
-	TextTruncate = Enum.TextTruncate.AtEnd,
-	ZIndex = 7,
-})
-
-local ownerTag = make("TextLabel", {
-	Name = "Lbl",
-	Size = UDim2.fromOffset(52, 16),
-	Position = UDim2.new(0, 62, 0, 48),
-	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Accent,
-	BackgroundTransparency = 0.82,
-	Text = "OWNER",
-	TextSize = 9,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
-	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 7,
-})
-corner(ownerTag, 5)
-ownerTag.Parent = profile
+	local notify = Nexus.CreateToggle(interface.Grid, "Testar notificacao", false)
+	interface:Add(notify.Frame)
+end
 
 --=====================================================================
--- PAINEL DE KEYBINDS (SUPERIOR DIREITO)
---
--- O painel NAO aparece flutuando no ecra: nasce ESCONDIDO e so aparece
--- quando o toggle "Show Keybinds" (aba SETTINGS) esta ligado. A lista
--- e informativa: nenhuma tecla e lida aqui.
+-- PAINEL DE KEYBINDS (informativo, so aparece com o toggle ligado)
 --=====================================================================
-
 local KEYBINDS = {
 	{ key = "RShift", action = "UI" },
 	{ key = "LAlt", action = "Cursor" },
@@ -3168,14 +2728,12 @@ local keyPanel = make("Frame", {
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
 	Active = true,
-	-- Escondido: so aparece com o toggle "Show Keybinds" da aba
-	-- SETTINGS (a acao "keybinds" abaixo).
 	Visible = false,
-	ZIndex = 4,
+	ZIndex = 40,
 })
 corner(keyPanel, 12)
 border(keyPanel, Theme.Stroke, 1)
-keyPanel.Parent = screenGui
+keyPanel.Parent = window.Gui
 
 local keyScale = make("UIScale", { Scale = UI_SCALE })
 keyScale.Parent = keyPanel
@@ -3191,7 +2749,7 @@ local keyHeader = make("Frame", {
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
 	Active = true,
-	ZIndex = 5,
+	ZIndex = 41,
 })
 keyHeader.Parent = keyPanel
 
@@ -3202,7 +2760,7 @@ label(keyHeader, {
 	TextSize = 11,
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Text,
-	ZIndex = 6,
+	ZIndex = 42,
 })
 
 local keyLine = make("Frame", {
@@ -3210,7 +2768,7 @@ local keyLine = make("Frame", {
 	Position = UDim2.fromOffset(14, 32),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Stroke,
-	ZIndex = 5,
+	ZIndex = 41,
 })
 keyLine.Parent = keyHeader
 
@@ -3221,7 +2779,7 @@ for index, entry in ipairs(KEYBINDS) do
 		Position = UDim2.fromOffset(14, KEY_HEADER_H + ((index - 1) * KEY_ROW_H)),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
-		ZIndex = 5,
+		ZIndex = 41,
 	})
 	row.Parent = keyPanel
 
@@ -3236,7 +2794,7 @@ for index, entry in ipairs(KEYBINDS) do
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		ZIndex = 6,
+		ZIndex = 42,
 	})
 	corner(chip, 5)
 	chip.Parent = row
@@ -3249,22 +2807,15 @@ for index, entry in ipairs(KEYBINDS) do
 		Font = FONT,
 		TextColor3 = Theme.Muted,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 6,
+		ZIndex = 42,
 	})
 end
 
 makeDraggable(keyPanel, keyHeader)
 
--- O toggle "Show Keybinds" da aba SETTINGS liga/desliga o painel.
-ACTIONS.keybinds = function(state)
-	keyPanel.Visible = state == true
-	log("Keybinds: " .. (keyPanel.Visible and "visiveis" or "escondidos"))
-end
-
 --=====================================================================
 -- BOTAO FLUTUANTE (REABRIR O MENU)
 --=====================================================================
-
 local floating = make("TextButton", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(46, 46),
@@ -3275,11 +2826,11 @@ local floating = make("TextButton", {
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Background,
 	AutoButtonColor = false,
-	ZIndex = 5,
+	ZIndex = 50,
 })
 corner(floating, 14)
 border(floating, Theme.Stroke, 1)
-floating.Parent = screenGui
+floating.Parent = window.Gui
 
 local floatingScale = make("UIScale", { Scale = UI_SCALE })
 floatingScale.Parent = floating
@@ -3293,65 +2844,27 @@ do
 end
 
 floating.MouseButton1Click:Connect(function()
-	window.Visible = not window.Visible
-	log("Menu: " .. (window.Visible and "aberto" or "fechado"))
-end)
-
---=====================================================================
--- SIDEBAR RECOLHIVEL / ATALHOS
---=====================================================================
-
-local sidebarCollapsed = false
-
-local function setSidebarCollapsed(collapsed)
-	sidebarCollapsed = collapsed
-	sidebar.Visible = not collapsed
-	-- O cartao de perfil e o rodape vivem na janela: tambem somem com a
-	-- sidebar.
-	if profile then
-		profile.Visible = not collapsed
-	end
-	if sidebarFooter then
-		sidebarFooter.Visible = not collapsed
-	end
-
-	local newX = collapsed and PANEL_PAD or CONTENT_X
-	local newW = collapsed and (WINDOW_W - (PANEL_PAD * 2)) or CONTENT_W
-	contentPanel.Position = UDim2.fromOffset(newX, CONTENT_Y)
-	contentPanel.Size = UDim2.fromOffset(newW, CONTENT_H)
-
-	scrollBody.Size = UDim2.new(1, 0, 0, 0)
-	renderTab(currentTab)
-	refreshCanvas()
-end
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or not screenGui.Parent then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.RightShift then
-		window.Visible = not window.Visible
-		log("Menu: " .. (window.Visible and "aberto" or "fechado"))
-	elseif input.KeyCode == Enum.KeyCode.LAlt then
-		setSidebarCollapsed(not sidebarCollapsed)
-		log("Sidebar: " .. (sidebarCollapsed and "recolhida" or "expandida"))
-	elseif input.KeyCode == Enum.KeyCode.U then
-		log("Descarregando a interface")
-		screenGui:Destroy()
-	end
+	window.Frame.Visible = not window.Frame.Visible
+	log("Menu: " .. (window.Frame.Visible and "aberto" or "fechado"))
 end)
 
 --=====================================================================
 -- INICIALIZACAO
 --=====================================================================
 
-selectTab(1)
-renderTab(1)
+-- O toggle "Show Keybinds" controla o painel dos atalhos.
+setKeybindsVisible = function(visible)
+	keyPanel.Visible = visible == true
+end
+
+-- Abre a primeira aba.
+if NexusTabs[1] then
+	NexusTabs[1]:Show()
+end
 
 log(string.format(
-	"Interface carregada (single file) • %s • host=%s • namecall=%s • humanoid=%s • antidebug=%s • debuginfo=%s",
-	TABS[1].name,
+	"NexusUI pronta • %d abas • host=%s • namecall=%s • humanoid=%s • antidebug=%s • debuginfo=%s",
+	#NexusTabs,
 	guiHost and guiHost.Name or "?",
 	namecallHooked and "on" or "off",
 	humanoidSpoofed and "on" or "off",
