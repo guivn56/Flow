@@ -640,6 +640,10 @@ end
 
 local TABS = {
 	{
+		name = "HOME",
+		custom = "home",
+	},
+	{
 		name = "VISUALS",
 		sections = {
 			{
@@ -767,7 +771,7 @@ local TABS = {
 			{
 				name = "SOUNDS",
 				items = {
-					{ type = "input", label = "Sound ID", placeholder = "rbxassetid://..." },
+					{ type = "input", label = "Add Sound ID", placeholder = "rbxassetid://..." },
 					{ type = "toggle", label = "Jump" },
 					{ type = "toggle", label = "Footsteps" },
 				},
@@ -917,23 +921,7 @@ local TABS = {
 	},
 	{
 		name = "SETTINGS",
-		sections = {
-			{
-				name = "SETTINGS",
-				items = {
-					{ type = "toggle", label = "Show Keybinds", action = "keybinds" },
-					{ type = "toggle", label = "Show Watermark" },
-				},
-			},
-			{
-				name = "INTERFACE",
-				items = {
-					{ type = "toggle", label = "Compact Sidebar" },
-					{ type = "toggle", label = "Hex Background" },
-					{ type = "button", label = "Reset Layout", style = "accent" },
-				},
-			},
-		},
+		custom = "settings",
 	},
 }
 
@@ -1284,7 +1272,7 @@ corner(contentPanel, 10)
 border(contentPanel, Theme.Stroke, 1)
 contentPanel.Parent = window
 
--- Parede com o padrao hexagonal: vive na MAIN FRAME, com ZIndex -1
+-- Parede com o padrao hexagonal: vive na MAIN FRAME, com ZIndex -2
 -- (por baixo de tudo o que esta na janela) e mosaico de 40x40.
 local hexLayer = make("ImageLabel", {
 	Name = randomName(),
@@ -1297,7 +1285,7 @@ local hexLayer = make("ImageLabel", {
 	TileSize = UDim2.new(0, 40, 0, 40),
 	ImageColor3 = Color3.fromRGB(70, 70, 70),
 	ImageTransparency = 0.85,
-	ZIndex = -1,
+	ZIndex = -2,
 })
 corner(hexLayer, 12)
 hexLayer.Parent = window
@@ -1318,14 +1306,23 @@ scroll.Parent = contentPanel
 
 local scrollBody = make("Frame", {
 	Name = randomName(),
-	Size = UDim2.fromOffset(CONTENT_W - (BODY_PAD * 2), 0),
-	Position = UDim2.fromOffset(BODY_PAD, BODY_PAD),
+	Size = UDim2.new(1, 0, 0, 0),
+	Position = UDim2.fromOffset(0, 0),
 	AutomaticSize = Enum.AutomaticSize.Y,
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
 	ZIndex = 4,
 })
 scrollBody.Parent = scroll
+
+-- Espaco interior do ScrollingFrame (padding em vez de posicoes fixas).
+local scrollPadding = make("UIPadding", {
+	PaddingLeft = UDim.new(0, BODY_PAD),
+	PaddingRight = UDim.new(0, BODY_PAD),
+	PaddingTop = UDim.new(0, BODY_PAD),
+	PaddingBottom = UDim.new(0, BODY_PAD),
+})
+scrollPadding.Parent = scroll
 
 local bodyListLayout = make("UIListLayout", {
 	Padding = UDim.new(0, 16),
@@ -1409,8 +1406,13 @@ local function closeDropdown(keepPanel)
 end
 
 local function cardWidth()
-	local bodyWidth = scrollBody.Size.X.Offset
-	return (bodyWidth - GRID_GAP) / 2
+	-- A largura de um cartao e metade da coluna. O scroll e a referencia
+	-- (o conteudo tem o padding de BODY_PAD de cada lado).
+	local bodyWidth = (scroll.AbsoluteSize.X / UI_SCALE) - (BODY_PAD * 2)
+	if bodyWidth <= 0 then
+		bodyWidth = CONTENT_W - (BODY_PAD * 2)
+	end
+	return math.max(140, (bodyWidth - GRID_GAP) / 2)
 end
 
 -- Slider visual: linha cinza com preenchimento roxo.
@@ -2027,6 +2029,779 @@ local function buildItem(item, order)
 end
 
 --=====================================================================
+-- COMPONENTES BBC HUB (estrutura da AirFlowLibrary, visual BBC Hub)
+--
+-- As quatro funcoes abaixo reproduzem a ESTRUTURA dos componentes da
+-- AirFlowLibrary (cartao + chip a direita, popup de opcoes, captura de
+-- tecla, toast animado), mas com o visual monocromatico do BBC Hub.
+-- Nada e importado da biblioteca: e so a estrutura.
+--=====================================================================
+
+-- Cartao base de um control (Surface2, borda de 1 px, cantos suaves).
+local function createControlCard(parent, title, height)
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, height or GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, 9)
+	border(card, Theme.Stroke, 1)
+	card.Parent = parent
+
+	label(card, {
+		Position = UDim2.fromOffset(12, 0),
+		Size = UDim2.new(1, -140, 1, 0),
+		Text = tostring(title or ""),
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = Theme.Muted,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6,
+	})
+
+	return card
+end
+
+-- Dropdown: cartao com o valor a direita; ao clicar abre a lista de
+-- opcoes (por baixo, ou por cima quando nao ha espaco).
+local function CreateDropdown(parent, title, options)
+	local card = createControlCard(parent, title)
+
+	local value = options and options[1] or ""
+	local valueButton = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(120, 26),
+		Position = UDim2.new(1, -128, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		Text = tostring(value),
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		AutoButtonColor = false,
+		ZIndex = 7,
+	})
+	corner(valueButton, 7)
+	border(valueButton, Theme.Stroke, 1)
+	valueButton.Parent = card
+
+	label(card, {
+		Position = UDim2.new(1, -18, 0.5, -7),
+		Size = UDim2.fromOffset(12, 14),
+		Text = "▾",
+		TextSize = 9,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		ZIndex = 7,
+	})
+
+	local function setValue(option)
+		value = option
+		valueButton.Text = tostring(option)
+		log(string.format("%s -> %s", tostring(title), tostring(option)))
+	end
+
+	valueButton.MouseButton1Click:Connect(function()
+		if openList then
+			closeDropdown()
+			return
+		end
+		closeDropdown()
+
+		local list = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.fromOffset(120, (#options * 26) + 8),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Surface,
+			ClipsDescendants = true,
+			ZIndex = 90,
+		})
+		corner(list, 8)
+		border(list, Theme.Stroke, 1)
+		list.Parent = overlay
+
+		-- Posicao relativa ao painel de conteudo (o overlay vive dentro
+		-- dele), dividida pela escala da janela.
+		local origin = valueButton.AbsolutePosition - contentPanel.AbsolutePosition
+		local below = (origin.Y + valueButton.AbsoluteSize.Y) / UI_SCALE + 4
+		local above = (origin.Y - (#options * 26) - 8) / UI_SCALE
+		if below + (#options * 26) > (contentPanel.AbsoluteSize.Y / UI_SCALE) and above > 8 then
+			list.Position = UDim2.fromOffset((origin.X + valueButton.AbsoluteSize.X - 120) / UI_SCALE, above)
+		else
+			list.Position = UDim2.fromOffset((origin.X + valueButton.AbsoluteSize.X - 120) / UI_SCALE, below)
+		end
+
+		for index, option in ipairs(options) do
+			local optionButton = make("TextButton", {
+				Name = randomName(),
+				Size = UDim2.new(1, -16, 0, 24),
+				Position = UDim2.fromOffset(8, 4 + ((index - 1) * 26)),
+				BorderSizePixel = 0,
+				BackgroundTransparency = 1,
+				Text = tostring(option),
+				TextSize = 11,
+				Font = FONT_MED,
+				TextColor3 = Theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AutoButtonColor = false,
+				ZIndex = 91,
+			})
+			optionButton.Parent = list
+
+			optionButton.MouseEnter:Connect(function()
+				tween(optionButton, { BackgroundColor3 = Theme.Surface2 }, 0.12)
+			end)
+
+			optionButton.MouseLeave:Connect(function()
+				tween(optionButton, { BackgroundColor3 = Theme.Surface }, 0.12)
+			end)
+
+			optionButton.MouseButton1Click:Connect(function()
+				setValue(option)
+				closeDropdown()
+			end)
+		end
+
+		openList = list
+	end)
+
+	return card, setValue, function()
+		return value
+	end
+end
+
+-- Input: caixa de texto escura dentro do cartao.
+local function CreateInput(parent, title, placeholder)
+	local card = createControlCard(parent, title)
+
+	local box = make("TextBox", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(150, 26),
+		Position = UDim2.new(1, -128, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Background,
+		Text = "",
+		PlaceholderText = tostring(placeholder or "..."),
+		PlaceholderColor3 = Theme.Muted,
+		TextColor3 = Theme.Text,
+		TextSize = 11,
+		Font = FONT,
+		ClearTextOnFocus = false,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 7,
+	})
+	corner(box, 7)
+	border(box, Theme.Stroke, 1)
+	box.Parent = card
+
+	local function getValue()
+		local text = box.Text
+		if text == "" then
+			text = box.PlaceholderText
+		end
+		return text
+	end
+
+	box.FocusLost:Connect(function()
+		log(string.format("%s -> %s", tostring(title), tostring(getValue())))
+	end)
+
+	return card, getValue
+end
+
+-- Keybind: botao de tecla. Ao clicar fica a escutar e a proxima tecla
+-- pressionada e a que fica escrita no botao.
+local function CreateKeybind(parent, title, key)
+	local card = createControlCard(parent, title)
+
+	local chip = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(74, 26),
+		Position = UDim2.new(1, -128, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface,
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 7,
+	})
+	corner(chip, 7)
+	border(chip, Theme.Stroke, 1)
+	chip.Parent = card
+
+	local chipLabel = label(chip, {
+		Size = UDim2.fromScale(1, 1),
+		Text = tostring(key or "..."),
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 8,
+	})
+
+	local listening = false
+	local connection = nil
+
+	local function stopListening()
+		listening = false
+		connection = nil
+		chipLabel.Text = tostring(key or "...")
+		tween(chipLabel, { TextColor3 = Theme.Muted }, 0.15)
+	end
+
+	chip.MouseButton1Click:Connect(function()
+		if listening then
+			stopListening()
+			return
+		end
+		listening = true
+		chipLabel.Text = "..."
+		tween(chipLabel, { TextColor3 = Theme.Text }, 0.15)
+
+		connection = UserInputService.InputBegan:Connect(function(input, processed)
+			if processed or not listening then
+				return
+			end
+			local name = input.KeyCode and input.KeyCode.Name
+			if name then
+				key = name
+				chipLabel.Text = name
+				log(string.format("%s -> %s", tostring(title), name))
+			end
+			stopListening()
+			if connection then
+				connection:Disconnect()
+			end
+		end)
+	end)
+
+	return card, function()
+		return key
+	end
+end
+
+-- Toast animado (como o Notify da AirFlowLibrary): entra a deslizar,
+-- fica um instante e desaparece.
+local function CreateNotification(text, duration)
+	local holder = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(280, 0),
+		Position = UDim2.fromOffset(320, 0),
+		AnchorPoint = Vector2.new(1, 0),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 40,
+	})
+	holder.Parent = screenGui
+
+	local toast = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(280, 56),
+		Position = UDim2.fromOffset(0, 0),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 41,
+	})
+	corner(toast, 10)
+	border(toast, Theme.Stroke, 1)
+	toast.Parent = holder
+
+	label(toast, {
+		Position = UDim2.fromOffset(14, 10),
+		Size = UDim2.new(1, -28, 0, 16),
+		Text = "BBC HUB",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		ZIndex = 42,
+	})
+
+	label(toast, {
+		Position = UDim2.fromOffset(14, 28),
+		Size = UDim2.new(1, -28, 0, 18),
+		Text = tostring(text or ""),
+		TextSize = 11,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 42,
+	})
+
+	-- Entra a deslizar e desvanece ao fim de uns segundos.
+	tween(holder, { Position = UDim2.fromOffset(0, 0) }, 0.26, Enum.EasingStyle.Quart)
+	task.delay(duration or 3.5, function()
+		if not holder.Parent then
+			return
+		end
+		local animation = tween(holder, { Position = UDim2.fromOffset(320, 0) }, 0.22, Enum.EasingStyle.Quart)
+		if animation and animation.Completed then
+			animation.Completed:Once(function()
+				if holder.Parent then
+					holder:Destroy()
+				end
+			end)
+		else
+			holder:Destroy()
+		end
+	end)
+
+	return toast
+end
+
+--=====================================================================
+-- ABA HOME
+--
+-- Estrutura copiada da Home da AirFlowLibrary (banner, cartao de
+-- estado, atalho e creditos), com o visual monocromatico do BBC Hub.
+--=====================================================================
+
+local function detectExecutor()
+	local ok, name = pcall(function()
+		if type(identifyexecutor) == "function" then
+			return identifyexecutor()
+		end
+		return nil
+	end)
+	if ok and type(name) == "string" and name ~= "" then
+		return name
+	end
+	if type(gethui) == "function" then
+		return "Delta"
+	end
+	return "Desconhecido"
+end
+
+local function detectPlatform()
+	if IS_TOUCH then
+		return "Mobile"
+	end
+	return "PC"
+end
+
+-- Cartao generico da Home (superficie escura, borda de 1 px).
+local function homeCard(parent, height)
+	local card = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, height or 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 5,
+	})
+	corner(card, 12)
+	border(card, Theme.Stroke, 1)
+	card.Parent = parent
+	return card
+end
+
+-- Linha "rotulo: valor" do cartao de estado.
+local function homeRow(parent, title, value, muted)
+	local row = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, -28, 0, 20),
+		BackgroundTransparency = 1,
+		ZIndex = 6,
+	})
+	row.Parent = parent
+
+	label(row, {
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(110, 18),
+		Text = title,
+		TextSize = 11,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 7,
+	})
+
+	label(row, {
+		Position = UDim2.new(1, -130, 0, 0),
+		Size = UDim2.fromOffset(130, 18),
+		Text = tostring(value or "-"),
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = muted and Theme.Muted or Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
+	})
+
+	return row
+end
+
+-- Duas colunas lado a lado (como no resto do menu).
+local function buildColumnLayout()
+	local columns = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 5,
+	})
+	columns.Parent = scrollBody
+
+	local columnsLayout = make("UIListLayout", {
+		Padding = UDim.new(0, GRID_GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		FillDirection = Enum.FillDirection.Horizontal,
+	})
+	columnsLayout.Parent = columns
+
+	local function column(order)
+		local frame = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.new(0.5, -(GRID_GAP / 2), 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BorderSizePixel = 0,
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			ZIndex = 5,
+		})
+		frame.Parent = columns
+
+		local layout = make("UIListLayout", {
+			Padding = UDim.new(0, GRID_ROW_GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+		layout.Parent = frame
+
+		return frame
+	end
+
+	return columns, column(1), column(2)
+end
+
+local function buildHome()
+	local _, left, right = buildColumnLayout()
+
+	-- BANNER DE BOAS-VINDAS -------------------------------------------
+	local banner = homeCard(left)
+	local bannerPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 16),
+		PaddingRight = UDim.new(0, 16),
+		PaddingTop = UDim.new(0, 16),
+		PaddingBottom = UDim.new(0, 16),
+	})
+	bannerPadding.Parent = banner
+
+	label(banner, {
+		Size = UDim2.new(1, 0, 0, 22),
+		Text = "Bem-vindo",
+		TextSize = 18,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		ZIndex = 6,
+	})
+
+	label(banner, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "BBC HUB  •  PROJECT DELTA",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local bannerLine = make("Frame", {
+		Size = UDim2.new(1, 0, 0, 1),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Stroke,
+		ZIndex = 6,
+	})
+	bannerLine.Parent = banner
+
+	label(banner, {
+		Size = UDim2.new(1, 0, 0, 34),
+		Text = "Interface single-file: cada botao imprime no console e a logica fica no marcador.",
+		TextSize = 11,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		TextWrapped = true,
+		ZIndex = 6,
+	})
+
+	-- CART DE ESTADO --------------------------------------------------
+	local status = homeCard(left)
+	local statusPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	statusPadding.Parent = status
+
+	label(status, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "STATUS",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	homeRow(status, "Jogador", LocalPlayer.DisplayName)
+	homeRow(status, "Username", "@" .. LocalPlayer.Name, true)
+	homeRow(status, "Executor", detectExecutor())
+	homeRow(status, "Plataforma", detectPlatform())
+
+	-- BOTAO JOIN DISCORD ----------------------------------------------
+	local discord = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Text,
+		Text = "Join Discord",
+		TextSize = 12,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Background,
+		AutoButtonColor = false,
+		ZIndex = 5,
+	})
+	corner(discord, 9)
+	discord.Parent = right
+
+	discord.MouseButton1Click:Connect(function()
+		CreateNotification("A abrir o Discord do BBC Hub...")
+		log("Discord: a abrir o convite")
+	end)
+
+	discord.MouseEnter:Connect(function()
+		tween(discord, { BackgroundColor3 = Theme.Text:Lerp(Color3.fromRGB(0, 0, 0), 0.15) }, 0.15)
+	end)
+
+	discord.MouseLeave:Connect(function()
+		tween(discord, { BackgroundColor3 = Theme.Text }, 0.15)
+	end)
+
+	-- CREDITOS --------------------------------------------------------
+	local credits = homeCard(right)
+	local creditsPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	creditsPadding.Parent = credits
+
+	label(credits, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "CREDITOS",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	label(credits, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "BBC Hub  •  Project Delta",
+		TextSize = 11,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		ZIndex = 6,
+	})
+
+	label(credits, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "Interface por guivn  •  v1.1",
+		TextSize = 10,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	label(credits, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "Feito em Luau, sem logica de cheat.",
+		TextSize = 10,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	refreshCanvas()
+end
+
+--=====================================================================
+-- ABA SETTINGS (com os componentes da AirFlow adaptedos)
+--=====================================================================
+
+local function buildSettings()
+	local _, left, right = buildColumnLayout()
+
+	-- PAINEL: os toggles que mexem na propria interface
+	local panelCard = homeCard(left)
+	local panelPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	panelPadding.Parent = panelCard
+
+	label(panelCard, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "PAINEL",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local toggles = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	toggles.Parent = panelCard
+
+	local togglesLayout = make("UIListLayout", {
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	togglesLayout.Parent = toggles
+
+	-- Este e o toggle que mostra/esconde o painel de keybinds.
+	local keybindsToggle = buildToggleCard({ type = "toggle", label = "Show Keybinds", action = "keybinds" }, 1)
+	keybindsToggle.Parent = toggles
+
+	local watermarkToggle = buildToggleCard({ type = "toggle", label = "Show Watermark" }, 2)
+	watermarkToggle.Parent = toggles
+
+	-- Perfil (dropdown)
+	local profileCard = homeCard(left)
+	local profilePadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	profilePadding.Parent = profileCard
+
+	label(profileCard, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "PERFIL",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local dropdownHolder = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	dropdownHolder.Parent = profileCard
+
+	CreateDropdown(dropdownHolder, "Interface", { "default", "compact", "cozy" })
+
+	-- Atalho de tecla (keybind)
+	local keyCard = homeCard(left)
+	local keyPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	keyPadding.Parent = keyCard
+
+	label(keyCard, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "ATALHOS",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local keyHolder = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	keyHolder.Parent = keyCard
+
+	CreateKeybind(keyHolder, "Abrir menu", "RShift")
+
+	-- Webhook (input)
+	local inputCard = homeCard(right)
+	local inputPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	inputPadding.Parent = inputCard
+
+	label(inputCard, {
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = "INTEGRACOES",
+		TextSize = 11,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		ZIndex = 6,
+	})
+
+	local inputHolder = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	inputHolder.Parent = inputCard
+
+	CreateInput(inputHolder, "Webhook URL", "https://discord.com/...")
+
+	-- Botao de teste da notificacao
+	local notifyButton = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		Text = "Testar notificacao",
+		TextSize = 12,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
+		AutoButtonColor = false,
+		ZIndex = 5,
+	})
+	corner(notifyButton, 9)
+	border(notifyButton, Theme.Stroke, 1)
+	notifyButton.Parent = right
+
+	notifyButton.MouseButton1Click:Connect(function()
+		CreateNotification("Notificacao de teste do BBC Hub.")
+		log("Notificacao: teste")
+	end)
+
+	notifyButton.MouseEnter:Connect(function()
+		tween(notifyButton, { BackgroundColor3 = Theme.Stroke }, 0.15)
+	end)
+
+	notifyButton.MouseLeave:Connect(function()
+		tween(notifyButton, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+	end)
+
+	refreshCanvas()
+end
+
+--=====================================================================
 -- SECCOES
 --=====================================================================
 
@@ -2165,8 +2940,14 @@ local function renderTab(index)
 	end
 
 	local tabData = TABS[index]
-	for order, sectionData in ipairs(tabData.sections) do
-		buildSection(sectionData, order)
+	if tabData.custom == "home" then
+		buildHome()
+	elseif tabData.custom == "settings" then
+		buildSettings()
+	else
+		for order, sectionData in ipairs(tabData.sections) do
+			buildSection(sectionData, order)
+		end
 	end
 	refreshCanvas()
 end
@@ -2539,7 +3320,7 @@ local function setSidebarCollapsed(collapsed)
 	contentPanel.Position = UDim2.fromOffset(newX, CONTENT_Y)
 	contentPanel.Size = UDim2.fromOffset(newW, CONTENT_H)
 
-	scrollBody.Size = UDim2.fromOffset(newW - (BODY_PAD * 2), 0)
+	scrollBody.Size = UDim2.new(1, 0, 0, 0)
 	renderTab(currentTab)
 	refreshCanvas()
 end
