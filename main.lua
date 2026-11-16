@@ -618,18 +618,18 @@ local function tween(object, properties, duration, style)
 	return animation
 end
 
--- Arraste com efeito premium (drag ghost).
+-- Arraste (logica da AirFlowLibrary).
 --
--- Enquanto a janela e arrastada fica um "fantasma" vermelho, do
--- tamanho dela e na posicao onde estava. A janela segue o rato/dedo e,
--- ao largar, o fantasma desaparece. (Tecnica do AirFlowLibrary: o
--- fantasma nasce quando o ponteiro passa do limiar de 3 px.)
-local function makeDraggable(frame, handle)
-	local dragging = false
-	local moved = false
-	local pressPoint = Vector2.zero
-	local startPosition = UDim2.new(0, 0, 0, 0)
-	local ghost = nil
+-- O ponteiro e lido em coordenadas da GUI (GetMouseLocation no rato, a
+-- posicao do input no toque) e a janela e arrastada a partir do ponto
+-- onde foi agarrada (grab offset), em vez de saltar para o cursor.
+--
+-- A janela tem AnchorPoint no centro: por isso a sua Position e sempre
+-- o CENTRO e o ghost (fantasma) nasce exactamente onde ela estava.
+local function enableDrag(root, gui, handle)
+	local dragging, moved = false, false
+	local grabOffset, pressPoint = Vector2.zero, Vector2.zero
+	local skeleton = nil
 
 	local function isPress(input)
 		return input.UserInputType == Enum.UserInputType.MouseButton1
@@ -641,30 +641,52 @@ local function makeDraggable(frame, handle)
 			or input.UserInputType == Enum.UserInputType.Touch
 	end
 
-	local function makeGhost()
-		if ghost then
+	-- A posicao do ponteiro no espaco da GUI.
+	local function pointerPosition(input)
+		if input and input.UserInputType == Enum.UserInputType.Touch then
+			return input.Position
+		end
+		local ok, mouse = pcall(function()
+			return UserInputService:GetMouseLocation()
+		end)
+		if ok and mouse then
+			return mouse
+		end
+		return input and input.Position or Vector2.zero
+	end
+
+	-- O centro da janela, no espaco da GUI.
+	local function centre()
+		return root.AbsolutePosition + root.AbsoluteSize * root.AnchorPoint - gui.AbsolutePosition
+	end
+
+	local function makeSkeleton()
+		if skeleton then
 			return
 		end
-		ghost = make("Frame", {
+		skeleton = make("Frame", {
 			Name = randomName(),
-			Size = UDim2.fromOffset(frame.AbsoluteSize.X, frame.AbsoluteSize.Y),
-			Position = UDim2.fromOffset(frame.AbsolutePosition.X, frame.AbsolutePosition.Y),
+			AnchorPoint = root.AnchorPoint,
+			Position = root.Position,
+			Size = UDim2.fromOffset(root.AbsoluteSize.X, root.AbsoluteSize.Y),
 			BorderSizePixel = 0,
 			BackgroundColor3 = Color3.fromRGB(255, 0, 0),
 			BackgroundTransparency = 0.5,
 			-- O fantasma fica ATRAS da janela.
 			ZIndex = -1,
 		})
-		corner(ghost, Design.WindowCorner)
-		ghost.Parent = frame.Parent
+		corner(skeleton, Design.WindowCorner)
+		skeleton.Parent = gui
 	end
 
-	local function dropGhost()
-		if ghost then
-			if ghost.Parent then
-				ghost:Destroy()
-			end
-			ghost = nil
+	local function dropSkeleton()
+		if not skeleton then
+			return
+		end
+		local closing = skeleton
+		skeleton = nil
+		if closing.Parent then
+			closing:Destroy()
 		end
 	end
 
@@ -674,30 +696,27 @@ local function makeDraggable(frame, handle)
 		end
 		dragging = true
 		moved = false
-		pressPoint = input.Position
-		startPosition = frame.Position
+		pressPoint = pointerPosition(input)
+		grabOffset = pressPoint - centre()
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if not dragging or not isMove(input) then
 			return
 		end
+		local point = pointerPosition(input)
 		if not moved then
-			if (input.Position - pressPoint).Magnitude <= 3 then
+			-- So depois de 3 px de movimento e que se arrasta (a mesma
+			-- escala da AirFlowLibrary): assim um clique simples nao
+			-- move a janela.
+			if (point - pressPoint).Magnitude <= 3 then
 				return
 			end
 			moved = true
-			makeGhost()
+			makeSkeleton()
 		end
-		-- O delta do ecra e dividido pela escala (componente a
-		-- componente: o Roblox nao divide um Vector2 por um numero). A
-		-- posicao da janela e em unidades do pai, nao em pixels de ecra.
-		local deltaX = (input.Position.X - pressPoint.X) / UI_SCALE
-		local deltaY = (input.Position.Y - pressPoint.Y) / UI_SCALE
-		frame.Position = UDim2.fromOffset(
-			startPosition.X.Offset + deltaX,
-			startPosition.Y.Offset + deltaY
-		)
+		local target = point - grabOffset
+		root.Position = UDim2.fromOffset(target.X, target.Y)
 	end)
 
 	UserInputService.InputEnded:Connect(function(input)
@@ -706,7 +725,7 @@ local function makeDraggable(frame, handle)
 		end
 		dragging = false
 		moved = false
-		dropGhost()
+		dropSkeleton()
 	end)
 end
 
@@ -769,6 +788,9 @@ function Nexus.CreateWindow(title)
 	local frame = make("Frame", {
 		Name = randomName(),
 		Size = UDim2.fromOffset(WINDOW_W, WINDOW_H),
+		-- AnchorPoint no centro: a Position e sempre o centro da janela
+		-- (e o que permite arrastar pela grab offset, como a AirFlow).
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromOffset(0, 0),
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
@@ -1050,12 +1072,9 @@ function Nexus.CreateWindow(title)
 	closeButton.MouseButton1Click:Connect(function()
 		log("Interface fechada")
 		frame.Visible = false
-		if NexusWindow and NexusWindow.Floating then
-			NexusWindow.Floating.Visible = true
-		end
 	end)
 
-	makeDraggable(frame, topbar)
+	enableDrag(frame, gui, topbar)
 
 	-- ---------------------------------------------------------------
 	-- SIDEBAR
@@ -1231,12 +1250,13 @@ function Nexus.CreateWindow(title)
 		ZIndex = 4,
 	})
 
-	-- Centra a janela no ecra (a escala ja esta aplicada).
+	-- Centra a janela no ecra (a Position e o centro, por isso divide-se
+	-- a dimensao desenhada por dois).
 	local function center()
 		local view = viewportSize()
 		frame.Position = UDim2.fromOffset(
-			math.max(0, (view.X - (WINDOW_W * UI_SCALE)) / 2),
-			math.max(0, (view.Y - (WINDOW_H * UI_SCALE)) / 2) - 20
+			math.max(WINDOW_W * UI_SCALE / 2, view.X / 2),
+			math.max(WINDOW_H * UI_SCALE / 2, view.Y / 2 - 20)
 		)
 	end
 	center()
@@ -2341,82 +2361,6 @@ end
 
 local window = Nexus.CreateWindow("NEXUS")
 
--- Duas colunas dentro de uma pagina (usado na HOME).
-local function buildColumns(body)
-	local columns = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundTransparency = 1,
-		ZIndex = 5,
-	})
-	columns.Parent = body
-
-	local layout = make("UIListLayout", {
-		Padding = UDim.new(0, GRID_GAP),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		FillDirection = Enum.FillDirection.Horizontal,
-	})
-	layout.Parent = columns
-
-	local function column(order)
-		local frame = make("Frame", {
-			Name = randomName(),
-			Size = UDim2.new(0.5, -(GRID_GAP / 2), 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BorderSizePixel = 0,
-			BackgroundTransparency = 1,
-			LayoutOrder = order,
-			ZIndex = 5,
-		})
-		frame.Parent = columns
-
-		local columnLayout = make("UIListLayout", {
-			Padding = UDim.new(0, GRID_ROW_GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		})
-		columnLayout.Parent = frame
-
-		return frame
-	end
-
-	return columns, column(1), column(2)
-end
-
--- Cartao de texto (banner, estado, creditos).
-local function infoCard(parent)
-	local card = make("Frame", {
-		Name = randomName(),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
-		ZIndex = 5,
-	})
-	corner(card, Design.Corner)
-	border(card, Theme.Stroke, 1)
-	card.Parent = parent
-
-	-- Os textos do card empilham-se com um UIListLayout (nada de
-	-- Positions fixos).
-	local layout = make("UIListLayout", {
-		Padding = UDim.new(0, 6),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	})
-	layout.Parent = card
-
-	local padding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, Design.Padding),
-		PaddingRight = UDim.new(0, Design.Padding),
-		PaddingTop = UDim.new(0, Design.Padding),
-		PaddingBottom = UDim.new(0, Design.Padding),
-	})
-	padding.Parent = card
-
-	return card
-end
-
 local function detectExecutor()
 	local ok, name = pcall(function()
 		if type(identifyexecutor) == "function" then
@@ -2440,119 +2384,381 @@ local function detectPlatform()
 	return "PC"
 end
 
--- Linha "rotulo: valor".
-local function infoRow(parent, title, value, muted)
-	local row = make("Frame", {
+--=====================================================================
+-- ABA HOME (estrutura da AirFlowLibrary)
+--
+-- A Home da AirFlow le-se de cima para baixo: um banner de boas-vindas
+-- com o busto do jogador, um card de performance (numeros grandes +
+-- figuras), o servidor e as ligacoes lado a lado e uma linha final com
+-- o executor. Cada card e um UIListLayout com AutomaticSize.Y: e o que
+-- impede os textos de ficarem sobrepostos.
+--=====================================================================
+
+-- Card da Home: cresce com o conteudo (AutomaticSize.Y + UIListLayout).
+local function homeCard(parent, order)
+	local card = make("Frame", {
 		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		LayoutOrder = order,
+		ZIndex = 5,
+	})
+	corner(card, Design.Corner)
+	border(card, Theme.Stroke, 1)
+	card.Parent = parent
+
+	local layout = make("UIListLayout", {
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	layout.Parent = card
+
+	local padding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, Design.Padding),
+		PaddingRight = UDim.new(0, Design.Padding),
+		PaddingTop = UDim.new(0, Design.Padding),
+		PaddingBottom = UDim.new(0, Design.Padding),
+	})
+	padding.Parent = card
+
+	return card
+end
+
+-- Titulo pequeno (maisculas, Muted) dentro de um card da Home.
+local function homeCaption(parent, text, order)
+	return label(parent, {
 		Size = UDim2.new(1, 0, 0, 20),
-		BackgroundTransparency = 1,
+		Text = string.upper(tostring(text or "")),
+		TextSize = 10,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LayoutOrder = order,
 		ZIndex = 6,
 	})
-	row.Parent = parent
+end
 
-	label(row, {
-		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.new(1, -140, 1, 0),
-		Text = title,
-		TextSize = Design.TextSize,
-		Font = FONT,
-		TextColor3 = Theme.Muted,
-		ZIndex = 7,
+-- Figura pequena: um valor grande e o nome por baixo.
+local function homeFigure(parent, name, value, order)
+	local cell = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(0.25, 0, 0, 40),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		ZIndex = 6,
 	})
+	cell.Parent = parent
 
-	label(row, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.fromOffset(130, 20),
+	label(cell, {
+		Size = UDim2.new(1, 0, 0, 20),
 		Text = tostring(value or "-"),
-		TextSize = Design.TextSize,
-		Font = FONT_MED,
-		TextColor3 = muted and Theme.Muted or Theme.Text,
-		TextXAlignment = Enum.TextXAlignment.Right,
+		TextSize = 18,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 7,
 	})
 
-	return row
-end
-
---=====================================================================
--- ABA HOME
---=====================================================================
-local homeTab = Nexus.CreateTab("HOME")
-do
-	local _, left, right = buildColumns(homeTab.Body)
-
-	-- Banner
-	local banner = infoCard(left)
-	label(banner, {
-		Size = UDim2.new(1, 0, 0, 22),
-		Text = "NexusHub v1.0",
-		TextSize = 18,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Text,
-		ZIndex = 6,
-	})
-
-	label(banner, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "BBC HUB STYLE  •  PROJECT DELTA",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	local bannerLine = make("Frame", {
-		Size = UDim2.new(1, 0, 0, 1),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Stroke,
-		ZIndex = 6,
-	})
-	bannerLine.Parent = banner
-
-	label(banner, {
-		Size = UDim2.new(1, 0, 0, 34),
-		Text = "Interface single-file: cada botao imprime no console e a logica fica no marcador.",
-		TextSize = 11,
+	label(cell, {
+		Size = UDim2.new(1, 0, 0, 14),
+		Text = string.upper(tostring(name or "")),
+		TextSize = 9,
 		Font = FONT,
 		TextColor3 = Theme.Muted,
-		TextWrapped = true,
-		ZIndex = 6,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
 	})
 
-	-- Card de status
-	local status = infoCard(left)
-	label(status, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "STATUS",
-		TextSize = 11,
+	return cell
+end
+
+local homeTab = Nexus.CreateTab("HOME")
+do
+	local body = homeTab.Body
+
+	-- BANNER DE BOAS-VINDAS ------------------------------------------
+	local banner = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 140),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ClipsDescendants = true,
+		LayoutOrder = 1,
+		ZIndex = 5,
+	})
+	corner(banner, Design.Corner)
+	border(banner, Theme.Stroke, 1)
+	banner.Parent = body
+
+	-- O busto do jogador fica na direita do banner e desvanece para a
+	-- esquerda (como na AirFlow): le-se como parte do cartao.
+	local bust = make("ImageLabel", {
+		Name = randomName(),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -16, 1, 0),
+		Size = UDim2.fromOffset(140, 140),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		Image = "rbxthumb://type=AvatarBust&id=" .. tostring(LocalPlayer.UserId) .. "&w=420&h=420",
+		ScaleType = Enum.ScaleType.Fit,
+		ZIndex = 6,
+	})
+	bust.Parent = banner
+
+	local gradient = make("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.45, 0),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		ZIndex = 6,
+	})
+	gradient.Parent = bust
+
+	local textWidth = UDim2.new(1, -190, 0, 0)
+
+	label(banner, {
+		Position = UDim2.fromOffset(22, 20),
+		Size = textWidth + UDim2.fromOffset(0, 14),
+		Text = "WELCOME BACK",
+		TextSize = 10,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
-		ZIndex = 6,
+		ZIndex = 7,
 	})
 
-	infoRow(status, "Jogador", LocalPlayer.DisplayName)
-	infoRow(status, "Username", "@" .. LocalPlayer.Name, true)
-	infoRow(status, "Executor", detectExecutor())
-	infoRow(status, "Plataforma", detectPlatform())
+	label(banner, {
+		Position = UDim2.fromOffset(22, 35),
+		Size = textWidth + UDim2.fromOffset(0, 32),
+		Text = LocalPlayer.DisplayName,
+		TextSize = 26,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
+	})
 
-	-- Botao Join Discord
+	label(banner, {
+		Position = UDim2.fromOffset(22, 67),
+		Size = textWidth + UDim2.fromOffset(0, 16),
+		Text = "@" .. LocalPlayer.Name,
+		TextSize = 13,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
+	})
+
+	-- Chips no fundo do banner (a unica cor forte do menu e a tag OWNER).
+	local chips = make("Frame", {
+		Name = randomName(),
+		Position = UDim2.new(0, 22, 1, -38),
+		Size = UDim2.new(1, -44, 0, 24),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 7,
+	})
+	chips.Parent = banner
+
+	local chipsLayout = make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 6),
+	})
+	chipsLayout.Parent = chips
+
+	local function chip(text, order, accent)
+		local box = make("TextLabel", {
+			Name = randomName(),
+			Size = UDim2.fromOffset(0, 22),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BorderSizePixel = 0,
+			BackgroundColor3 = accent and Theme.Accent or Theme.Surface,
+			BackgroundTransparency = accent and 0.85 or 0.2,
+			Text = text,
+			TextSize = 10,
+			Font = FONT_BOLD,
+			TextColor3 = accent and Theme.Text or Theme.Muted,
+			LayoutOrder = order,
+			ZIndex = 8,
+		})
+		corner(box, Design.Corner)
+		box.Parent = chips
+		return box
+	end
+
+	chip("OWNER", 1, true)
+	chip("PROJECT DELTA", 2, false)
+	chip("V1.0", 3, false)
+
+	-- CARD DE PERFORMANCE --------------------------------------------
+	local stats = homeCard(body, 2)
+
+	local figures = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 1,
+		ZIndex = 6,
+	})
+	figures.Parent = stats
+
+	local figureGrid = make("UIGridLayout", {
+		CellPadding = UDim2.fromOffset(0, 8),
+		CellSize = UDim2.new(0.25, 0, 0, 40),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	figureGrid.Parent = figures
+
+	homeFigure(figures, "Executor", detectExecutor(), 1)
+	homeFigure(figures, "Plataforma", detectPlatform(), 2)
+	homeFigure(figures, "Jogadores", tostring(#Players:GetPlayers()), 3)
+	homeFigure(figures, "Versao", "v1.0", 4)
+
+	-- SERVIDOR E LIGACOES LADO A LADO -------------------------------
+	local split = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 3,
+		ZIndex = 5,
+	})
+	split.Parent = body
+
+	local splitLayout = make("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 10),
+	})
+	splitLayout.Parent = split
+
+	local function splitColumn(order)
+		local frame = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BorderSizePixel = 0,
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			ZIndex = 5,
+		})
+		frame.Parent = split
+
+		local layout = make("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 10),
+		})
+		layout.Parent = frame
+
+		return frame
+	end
+
+	local leftColumn = splitColumn(1)
+	local rightColumn = splitColumn(2)
+
+	-- Lado esquerdo: SERVIDOR
+	local serverCard = homeCard(leftColumn, 1)
+	homeCaption(serverCard, "Servidor", 1)
+
+	local serverRows = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 6,
+	})
+	serverRows.Parent = serverCard
+
+	local serverLayout = make("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 6),
+	})
+	serverLayout.Parent = serverRows
+
+	local function serverRow(name, value)
+		local row = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.new(1, 0, 0, 20),
+			BackgroundTransparency = 1,
+			ZIndex = 7,
+		})
+		row.Parent = serverRows
+
+		label(row, {
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(1, -150, 1, 0),
+			Text = name,
+			TextSize = 12,
+			Font = FONT,
+			TextColor3 = Theme.Muted,
+			ZIndex = 8,
+		})
+
+		label(row, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.fromOffset(140, 20),
+			Text = tostring(value or "-"),
+			TextSize = 12,
+			Font = FONT_MED,
+			TextColor3 = Theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			ZIndex = 8,
+		})
+
+		return row
+	end
+
+	serverRow("Jogadores", tostring(#Players:GetPlayers()))
+	serverRow("Plataforma", detectPlatform())
+	serverRow("Executor", detectExecutor())
+	serverRow("Versao", "v1.0 (single file)")
+
+	-- Lado direito: LIGACOES
+	local linksCard = homeCard(rightColumn, 1)
+	homeCaption(linksCard, "Ligacoes", 1)
+
+	local linksHolder = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		ZIndex = 6,
+	})
+	linksHolder.Parent = linksCard
+
+	local linksLayout = make("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 8),
+	})
+	linksLayout.Parent = linksHolder
+
 	local discord = make("TextButton", {
 		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
+		BackgroundColor3 = Theme.Surface,
 		Text = "Join Discord",
 		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		AutoButtonColor = false,
-		ZIndex = 5,
+		ZIndex = 7,
 	})
 	corner(discord, Design.Corner)
 	border(discord, Theme.Stroke, 1)
-	discord.Parent = right
+	discord.Parent = linksHolder
 
 	discord.MouseButton1Click:Connect(function()
 		Nexus.CreateNotification("A abrir o Discord do NexusHub...")
@@ -2564,45 +2770,71 @@ do
 	end)
 
 	discord.MouseLeave:Connect(function()
-		tween(discord, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+		tween(discord, { BackgroundColor3 = Theme.Surface }, 0.15)
 	end)
 
-	-- Creditos
-	local credits = infoCard(right)
-	label(credits, {
+	label(linksHolder, {
 		Size = UDim2.new(1, 0, 0, 16),
-		Text = "CREDITOS",
-		TextSize = 11,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Muted,
-		ZIndex = 6,
-	})
-
-	label(credits, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "NexusHub  •  Project Delta",
-		TextSize = 11,
-		Font = FONT_MED,
-		TextColor3 = Theme.Text,
-		ZIndex = 6,
-	})
-
-	label(credits, {
-		Size = UDim2.new(1, 0, 0, 16),
-		Text = "Interface por guivn  •  v1.0",
+		Text = "NexusHub  •  Project Delta  •  v1.0",
 		TextSize = 10,
 		Font = FONT,
 		TextColor3 = Theme.Muted,
-		ZIndex = 6,
+		LayoutOrder = 3,
+		ZIndex = 7,
 	})
 
-	label(credits, {
+	label(linksHolder, {
 		Size = UDim2.new(1, 0, 0, 16),
-		Text = "Feito em Luau, sem logica de cheat.",
+		Text = "Interface em Luau, so UI + prints.",
 		TextSize = 10,
 		Font = FONT,
 		TextColor3 = Theme.Muted,
+		LayoutOrder = 4,
+		ZIndex = 7,
+	})
+
+	-- LARGURA: lado a lado quando ha espaco, empilhado quando nao ha
+	-- (a mesma logica da AirFlow).
+	local function fitSplit()
+		local wide = split.AbsoluteSize.X >= 540
+		splitLayout.FillDirection = wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
+		local size = wide and UDim2.new(0.5, -5, 0, 0) or UDim2.new(1, 0, 0, 0)
+		leftColumn.Size = size
+		rightColumn.Size = size
+	end
+	split:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitSplit)
+	task.defer(fitSplit)
+
+	-- LINHA DO EXECUTOR ----------------------------------------------
+	local executorLine = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, 26),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		LayoutOrder = 4,
+		ZIndex = 5,
+	})
+	executorLine.Parent = body
+
+	local dot = make("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 4, 0.5, 0),
+		Size = UDim2.fromOffset(7, 7),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Success,
 		ZIndex = 6,
+	})
+	corner(dot, 4)
+	dot.Parent = executorLine
+
+	label(executorLine, {
+		Position = UDim2.fromOffset(18, 0),
+		Size = UDim2.new(1, -40, 1, 0),
+		Text = detectExecutor() .. "  •  ambiente pronto",
+		TextSize = 12,
+		Font = FONT,
+		TextColor3 = Theme.Muted,
+		ZIndex = 7,
 	})
 end
 
@@ -2943,16 +3175,18 @@ for index, entry in ipairs(KEYBINDS) do
 	})
 end
 
-makeDraggable(keyPanel, keyHeader)
+enableDrag(keyPanel, window.Gui, keyHeader)
 
 --=====================================================================
 -- BOTAO FLUTUANTE (REABRIR O MENU)
 --=====================================================================
--- Botao flutuante: redondo, com o "N", no canto ESQUERDO do ecra.
--- E arrastavel (rato e toque) e traz a janela de volta.
+-- Botao flutuante (o "island" da AirFlow): fica sempre no ecra, no
+-- canto esquerdo, e traz a janela de volta quando o menu esta fechado.
 local floating = make("TextButton", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(46, 46),
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.fromOffset(20, 0),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
 	Text = "N",
@@ -2971,14 +3205,11 @@ floatingScale.Parent = floating
 
 do
 	local view = viewportSize()
-	floating.Position = UDim2.fromOffset(
-		20,
-		math.max(20, view.Y - (46 * UI_SCALE) - 20)
-	)
+	floating.Position = UDim2.fromOffset(20, view.Y / 2)
 end
 
--- Arrastar o botao flutuante (com o mesmo fantasma do menu).
-makeDraggable(floating, floating)
+-- Arrastar o botao flutuante (mesma logica da AirFlow).
+enableDrag(floating, window.Gui, floating)
 
 floating.MouseEnter:Connect(function()
 	tween(floating, { BackgroundColor3 = Design.Hover }, 0.15)
@@ -2991,13 +3222,11 @@ end)
 floating.MouseButton1Click:Connect(function()
 	local show = not window.Frame.Visible
 	window.Frame.Visible = show
-	floating.Visible = not show
 	log("Menu: " .. (show and "aberto" or "fechado"))
 end)
 
--- O X da topbar esconde a janela: o botao flutuante aparece.
+-- O X da topbar fecha a janela; o botao flutuante fica no ecra.
 window.Floating = floating
-floating.Visible = false
 
 --=====================================================================
 -- INICIALIZACAO
