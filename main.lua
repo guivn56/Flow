@@ -445,23 +445,23 @@ local function randomGuiName()
 end
 
 --=====================================================================
--- TEMA
+-- TEMA (BBC Hub)
 --
--- Paleta exacta (pedida):
---   Background  8,  8,  8   preto quase puro (fundo da janela)
---   Surface    15, 15, 15   fundo escuro das abas/barras
---   Surface2   25, 25, 25   fundo dos cards/botoes
---   Stroke     45, 45, 45   borda dos botoes
---   Accent    170, 80, 255   roxo (SO nos botoes/controlos)
---   Text      255,255,255   texto branco
---   Muted     140,140,140   texto secundario
+-- Paleta exacta:
+--   Background  10, 10, 10   preto quase puro (janela + sidebar)
+--   Surface     15, 15, 15   top bar e area de conteudo
+--   Surface2    22, 22, 22   fundo dos cards/botoes
+--   Stroke      40, 40, 40   bordas finas
+--   Accent     170, 80, 255   roxo neon (botoes, icones, estados)
+--   Text       255,255,255   texto principal
+--   Muted      140,140,140   texto secundario
 --=====================================================================
 
 local Theme = {
-	Background = Color3.fromRGB(8, 8, 8),
+	Background = Color3.fromRGB(10, 10, 10),
 	Surface = Color3.fromRGB(15, 15, 15),
-	Surface2 = Color3.fromRGB(25, 25, 25),
-	Stroke = Color3.fromRGB(45, 45, 45),
+	Surface2 = Color3.fromRGB(22, 22, 22),
+	Stroke = Color3.fromRGB(40, 40, 40),
 	Accent = Color3.fromRGB(170, 80, 255),
 	Text = Color3.fromRGB(255, 255, 255),
 	Muted = Color3.fromRGB(140, 140, 140),
@@ -471,14 +471,39 @@ local FONT = Enum.Font.Gotham
 local FONT_MED = Enum.Font.GothamMedium
 local FONT_BOLD = Enum.Font.GothamBold
 
+-- A escala da interface segue o ecra: nos telemoveis (Delta) o menu e
+-- reduzido para 0.65, em ecras pequenos fica a meio, num ecra grande
+-- fica a 1.
+local function viewportSize()
+	local camera = workspace.CurrentCamera
+	if camera then
+		return camera.ViewportSize
+	end
+	return Vector2.new(1920, 1080)
+end
+
 local IS_TOUCH = UserInputService.TouchEnabled
-local UI_SCALE = IS_TOUCH and 0.65 or 1
+
+local function computeUIScale()
+	local view = viewportSize()
+	if IS_TOUCH then
+		return 0.65
+	end
+	if view.X < 1000 then
+		return 0.8
+	end
+	return 1
+end
+
+local UI_SCALE = computeUIScale()
 
 --=====================================================================
 -- LAYOUT
 --=====================================================================
 
-local WINDOW_W, WINDOW_H = 900, 560
+-- A janela e alta o suficiente para as 11 abas da sidebar caberem
+-- (com o cartao de perfil no rodape) sem descer.
+local WINDOW_W, WINDOW_H = 900, 620
 local SIDEBAR_W = 210
 local TOPBAR_H = 54
 local PANEL_PAD = 12
@@ -605,14 +630,6 @@ local function makeDraggable(frame, handle)
 			)
 		end
 	end)
-end
-
-local function viewportSize()
-	local camera = workspace.CurrentCamera
-	if camera then
-		return camera.ViewportSize
-	end
-	return Vector2.new(1920, 1080)
 end
 
 --=====================================================================
@@ -959,7 +976,10 @@ do
 	)
 end
 
--- Topbar
+-- Topbar (BBC Hub)
+--
+-- Fundo escuro, uma linha subtil em baixo, o logo a esquerda, um botao
+-- "default" ao centro e tres botoes de icones a direita.
 local topbar = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.new(1, 0, 0, TOPBAR_H),
@@ -971,6 +991,7 @@ local topbar = make("Frame", {
 corner(topbar, 12)
 topbar.Parent = window
 
+-- O patch tapa os cantos de baixo da barra (a janela e arredondada).
 local topbarPatch = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 14),
 	Position = UDim2.fromOffset(0, TOPBAR_H - 14),
@@ -979,6 +1000,16 @@ local topbarPatch = make("Frame", {
 	ZIndex = 3,
 })
 topbarPatch.Parent = topbar
+
+-- Linha subtil em baixo da barra.
+local topbarLine = make("Frame", {
+	Size = UDim2.new(1, -24, 0, 1),
+	Position = UDim2.new(0, 12, 1, -1),
+	BorderSizePixel = 0,
+	BackgroundColor3 = Theme.Stroke,
+	ZIndex = 4,
+})
+topbarLine.Parent = topbar
 
 local logoMark = make("Frame", {
 	Size = UDim2.fromOffset(34, 34),
@@ -1020,30 +1051,168 @@ label(topbar, {
 	ZIndex = 4,
 })
 
-local closeButton = make("TextButton", {
-	Size = UDim2.fromOffset(30, 30),
-	Position = UDim2.new(1, -42, 0, 12),
+-- Botao central: o perfil activo (botao falso, so UI).
+local profileButton = make("TextButton", {
+	Name = randomName(),
+	Size = UDim2.fromOffset(104, 28),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface,
-	BackgroundTransparency = 0.3,
-	Text = "✕",
-	TextSize = 14,
-	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
+	BackgroundColor3 = Theme.Surface2,
+	Text = "default",
+	TextSize = 12,
+	Font = FONT_MED,
+	TextColor3 = Theme.Muted,
+	TextXAlignment = Enum.TextXAlignment.Left,
 	AutoButtonColor = false,
 	ZIndex = 4,
 })
-corner(closeButton, 8)
-closeButton.Parent = topbar
+corner(profileButton, 8)
+border(profileButton, Theme.Stroke, 1)
+profileButton.Parent = topbar
 
-closeButton.MouseButton1Click:Connect(function()
-	log("Interface fechada")
-	window.Visible = false
+label(profileButton, {
+	Position = UDim2.new(1, -22, 0, 5),
+	Size = UDim2.fromOffset(14, 16),
+	Text = "▼",
+	TextSize = 9,
+	Font = FONT,
+	TextColor3 = Theme.Muted,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	ZIndex = 5,
+})
+
+profileButton.MouseEnter:Connect(function()
+	tween(profileButton, { BackgroundColor3 = Theme.Stroke }, 0.15)
 end)
+
+profileButton.MouseLeave:Connect(function()
+	tween(profileButton, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+end)
+
+profileButton.MouseButton1Click:Connect(function()
+	log("Perfil: default")
+end)
+
+-- Botoes de icones a direita (lupa, lua, engrenagem). Os icones sao
+-- desenhados com formas: nao ha pack de icones no single file.
+local function buildIconButton(parent, xOffset, kind)
+	local button = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(28, 28),
+		Position = UDim2.new(1, xOffset, 0, 13),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 4,
+	})
+	corner(button, 8)
+	border(button, Theme.Stroke, 1)
+	button.Parent = parent
+
+	if kind == "search" then
+		-- lupa: um circulo com um pe
+		local lens = make("Frame", {
+			Size = UDim2.fromOffset(12, 12),
+			Position = UDim2.fromOffset(6, 6),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Muted,
+			ZIndex = 5,
+		})
+		corner(lens, 6)
+		local lensHole = make("Frame", {
+			Size = UDim2.fromOffset(6, 6),
+			Position = UDim2.fromOffset(3, 3),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Surface2,
+			ZIndex = 6,
+		})
+		corner(lensHole, 3)
+		lensHole.Parent = lens
+		lens.Parent = button
+
+		local handle = make("Frame", {
+			Size = UDim2.fromOffset(6, 2),
+			Position = UDim2.fromOffset(15, 17),
+			Rotation = 45,
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Muted,
+			ZIndex = 5,
+		})
+		corner(handle, 1)
+		handle.Parent = button
+	elseif kind == "lua" then
+		label(button, {
+			Size = UDim2.fromScale(1, 1),
+			Text = "</>",
+			TextSize = 10,
+			Font = FONT_BOLD,
+			TextColor3 = Theme.Muted,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 5,
+		})
+	else
+		-- engrenagem: um circulo com quatro dentes
+		local gear = make("Frame", {
+			Size = UDim2.fromOffset(14, 14),
+			Position = UDim2.fromOffset(7, 7),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Muted,
+			ZIndex = 5,
+		})
+		corner(gear, 7)
+		local gearHole = make("Frame", {
+			Size = UDim2.fromOffset(5, 5),
+			Position = UDim2.fromOffset(4.5, 4.5),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Surface2,
+			ZIndex = 6,
+		})
+		corner(gearHole, 3)
+		gearHole.Parent = gear
+		gear.Parent = button
+
+		for index = 0, 3 do
+			local tooth = make("Frame", {
+				Size = UDim2.fromOffset(3, 5),
+				Position = UDim2.fromOffset(13, 11.5),
+				Rotation = index * 45,
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Muted,
+				ZIndex = 5,
+			})
+			corner(tooth, 1)
+			tooth.Parent = button
+		end
+	end
+
+	button.MouseEnter:Connect(function()
+		tween(button, { BackgroundColor3 = Theme.Stroke }, 0.15)
+	end)
+
+	button.MouseLeave:Connect(function()
+		tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+	end)
+
+	button.MouseButton1Click:Connect(function()
+		log("Botao: " .. kind)
+	end)
+
+	return button
+end
+
+buildIconButton(topbar, -74, "search")
+buildIconButton(topbar, -42, "lua")
+buildIconButton(topbar, -10, "settings")
 
 makeDraggable(window, topbar)
 
 -- Sidebar
+--
+-- A lista de abas vive DENTRO da sidebar (os botoes tem a sidebar como
+-- Parent), com um UIPadding para nao encostarem nas bordas e um
+-- UIListLayout com o mesmo espacamento para todas.
 local sidebar = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(SIDEBAR_W, WINDOW_H - TOPBAR_H),
@@ -1056,60 +1225,56 @@ local sidebar = make("Frame", {
 })
 sidebar.Parent = window
 
+-- Linha vertical que separa a sidebar do conteudo (vive na janela para
+-- o UIListLayout da sidebar nao a mexer).
 local sidebarLine = make("Frame", {
 	Size = UDim2.new(0, 1, 1, -28),
-	Position = UDim2.fromOffset(SIDEBAR_W - 1, 14),
+	Position = UDim2.fromOffset(SIDEBAR_W - 1, TOPBAR_H + 14),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Stroke,
 	ZIndex = 4,
 })
-sidebarLine.Parent = sidebar
+sidebarLine.Parent = window
+
+-- Espaco interior: as abas nao encostam nas bordas (10 px a esquerda e
+-- 10 px a direita, com o -10 do botao) e o rodape fica livre para o
+-- card de perfil.
+local sidebarPadding = make("UIPadding", {
+	PaddingLeft = UDim.new(0, 10),
+	PaddingRight = UDim.new(0, 0),
+	PaddingTop = UDim.new(0, 14),
+	PaddingBottom = UDim.new(0, 92),
+})
+sidebarPadding.Parent = sidebar
+
+local sidebarLayout = make("UIListLayout", {
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	HorizontalAlignment = Enum.HorizontalAlignment.Left,
+})
+sidebarLayout.Parent = sidebar
 
 label(sidebar, {
-	Position = UDim2.fromOffset(18, 16),
-	Size = UDim2.fromOffset(SIDEBAR_W - 36, 16),
+	Name = "CategoriesLabel",
+	Size = UDim2.new(1, 0, 0, 16),
 	Text = "CATEGORIES",
 	TextSize = 10,
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Muted,
+	LayoutOrder = 1,
 	ZIndex = 4,
 })
-
--- Container proprio da lista de abas (o UIListLayout nao pode tocar
--- nos labels/linhas da sidebar).
-local tabList = make("Frame", {
-	Name = randomName(),
-	Size = UDim2.new(1, 0, 1, -74),
-	Position = UDim2.fromOffset(0, 40),
-	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
-	ZIndex = 4,
-})
-tabList.Parent = sidebar
-
-local tabListLayout = make("UIListLayout", {
-	Padding = UDim.new(0, 4),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-})
-tabListLayout.Parent = tabList
-
-local tabListPadding = make("UIPadding", {
-	PaddingLeft = UDim.new(16, 0),
-	PaddingRight = UDim.new(16, 0),
-})
-tabListPadding.Parent = tabList
 
 -- Painel de conteudo
 --
--- O painel e PRETO (8,8,8) e o padrao hexagonal e desenhado por cima
--- dele (a ImageLabel com ZIndex -2 vive dentro do painel).
+-- O painel e transparente: a "parede" (fundo hexagonal) vive na janela
+-- e aparece por baixo do conteudo.
 local contentPanel = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(CONTENT_W, CONTENT_H),
 	Position = UDim2.fromOffset(CONTENT_X, CONTENT_Y),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Background,
-	BackgroundTransparency = 0,
+	BackgroundTransparency = 1,
 	ClipsDescendants = true,
 	ZIndex = 3,
 })
@@ -1117,11 +1282,8 @@ corner(contentPanel, 10)
 border(contentPanel, Theme.Stroke, 1)
 contentPanel.Parent = window
 
--- Fundo hexagonal do painel de conteudo.
---
--- O padrao e uma ImageLabel em mosaico (50x50) com o ZIndex -2: vive
--- por baixo de todo o conteudo e por cima do fundo preto do painel.
--- A transparencia e baixa o suficiente para o hexagono se ver.
+-- Parede com o padrao hexagonal: vive na MAIN FRAME, com ZIndex -1
+-- (por baixo de tudo o que esta na janela) e mosaico de 40x40.
 local hexLayer = make("ImageLabel", {
 	Name = randomName(),
 	Size = UDim2.fromScale(1, 1),
@@ -1130,13 +1292,13 @@ local hexLayer = make("ImageLabel", {
 	BackgroundTransparency = 1,
 	Image = "rbxassetid://12629542321",
 	ScaleType = Enum.ScaleType.Tile,
-	TileSize = UDim2.fromOffset(50, 50),
-	ImageColor3 = Color3.fromRGB(85, 85, 85),
-	ImageTransparency = 0.72,
-	ZIndex = -2,
+	TileSize = UDim2.new(0, 40, 0, 40),
+	ImageColor3 = Color3.fromRGB(70, 70, 70),
+	ImageTransparency = 0.85,
+	ZIndex = -1,
 })
-corner(hexLayer, 10)
-hexLayer.Parent = contentPanel
+corner(hexLayer, 12)
+hexLayer.Parent = window
 
 local scroll = make("ScrollingFrame", {
 	Name = randomName(),
@@ -1147,8 +1309,7 @@ local scroll = make("ScrollingFrame", {
 	ScrollBarImageColor3 = Theme.Muted,
 	ScrollBarImageTransparency = 0.45,
 	ScrollingDirection = Enum.ScrollingDirection.Y,
-	AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	CanvasSize = UDim2.fromOffset(CONTENT_W, 0),
+	CanvasSize = UDim2.fromOffset(CONTENT_W, CONTENT_H),
 	ZIndex = 4,
 })
 scroll.Parent = contentPanel
@@ -1169,6 +1330,17 @@ local bodyListLayout = make("UIListLayout", {
 	SortOrder = Enum.SortOrder.LayoutOrder,
 })
 bodyListLayout.Parent = scrollBody
+
+-- O canvas segue o conteudo: quando um submenu abre (ou fecha) a coluna
+-- cresce, por isso o canvas e recalculado.
+local function refreshCanvas()
+	local height = scrollBody.AbsoluteSize.Y + (BODY_PAD * 2)
+	scroll.CanvasSize = UDim2.fromOffset(CONTENT_W, math.max(height, CONTENT_H))
+end
+
+pcall(function()
+	scrollBody:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshCanvas)
+end)
 
 -- Overlay dos submenus: dentro do painel de conteudo (para as
 -- coordenadas baterem certo) e SEM ClipsDescendants, para o dropdown
@@ -1229,6 +1401,9 @@ local function closeDropdown(keepPanel)
 			tween(burger, { Rotation = 0 }, 0.2)
 		end
 	end
+
+	-- O conteudo da aba voltou ao tamanho normal: o canvas e recalculado.
+	refreshCanvas()
 end
 
 local function cardWidth()
@@ -1236,17 +1411,19 @@ local function cardWidth()
 	return (bodyWidth - GRID_GAP) / 2
 end
 
--- Slider visual: linha cinza com preenchimento roxo
+-- Slider visual: linha cinza com preenchimento roxo.
+-- A linha e um item do UIListLayout do submenu (sem posicoes fixas).
 local function buildSlider(parent, spec, order)
 	local minValue = spec.min or 0
 	local maxValue = spec.max or 100
 	local unit = spec.unit or ""
 
 	local row = make("Frame", {
-		Size = UDim2.new(1, -24, 0, SLIDER_ROW_H - 10),
-		Position = UDim2.fromOffset(12, SLIDER_BASE_Y + ((order - 1) * SLIDER_ROW_H)),
+		Name = randomName(),
+		Size = UDim2.new(1, 0, 0, SLIDER_ROW_H - 10),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
+		LayoutOrder = order,
 		ZIndex = 22,
 	})
 	row.Parent = parent
@@ -1339,7 +1516,11 @@ local function buildSlider(parent, spec, order)
 	return row
 end
 
--- SubFrame que abre por baixo do cartao, com altura animada
+-- SubFrame que abre por baixo do cartao, com altura animada.
+--
+-- O painel usa UIListLayout + AutomaticSize: os controlos (sliders e
+-- dropdowns) sao itens da lista, nunca posicoes fixas. A altura e a
+-- animacao quem a da (TweenService, EasingStyle.Quint).
 local function openDropdown(card, burger, sliders, title, dropdowns)
 	if openBurger == burger then
 		closeDropdown()
@@ -1351,6 +1532,7 @@ local function openDropdown(card, burger, sliders, title, dropdowns)
 		Name = randomName(),
 		Size = UDim2.fromOffset(cardWidth(), 0),
 		Position = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface2,
 		ClipsDescendants = true,
@@ -1360,30 +1542,44 @@ local function openDropdown(card, burger, sliders, title, dropdowns)
 	border(panel, Theme.Stroke, 1)
 	panel.Parent = overlay
 
+	local panelLayout = make("UIListLayout", {
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	panelLayout.Parent = panel
+
+	local panelPadding = make("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 12),
+	})
+	panelPadding.Parent = panel
+
 	label(panel, {
-		Position = UDim2.fromOffset(12, 10),
-		Size = UDim2.new(1, -24, 0, 16),
+		Size = UDim2.new(1, 0, 0, 16),
 		Text = string.upper(title or "OPTIONS"),
 		TextSize = 10,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
+		LayoutOrder = 1,
 		ZIndex = 62,
 	})
 
 	for index, spec in ipairs(sliders) do
-		buildSlider(panel, spec, index)
+		buildSlider(panel, spec, index + 1)
 	end
 
 	-- Dropdowns: uma linha com o nome e o valor actual. O valor abre
 	-- uma lista pequena por baixo da linha.
 	local dropdownRows = {}
-	local dropdownTop = SLIDER_BASE_Y + (#sliders * SLIDER_ROW_H)
 	for index, spec in ipairs(dropdowns) do
 		local row = make("Frame", {
-			Size = UDim2.new(1, -24, 0, 30),
-			Position = UDim2.fromOffset(12, dropdownTop + ((index - 1) * 34)),
+			Name = randomName(),
+			Size = UDim2.new(1, 0, 0, 30),
 			BorderSizePixel = 0,
 			BackgroundTransparency = 1,
+			LayoutOrder = #sliders + index + 1,
 			ZIndex = 62,
 		})
 		row.Parent = panel
@@ -1482,8 +1678,6 @@ local function openDropdown(card, burger, sliders, title, dropdowns)
 		table.insert(dropdownRows, row)
 	end
 
-	local height = dropdownTop + (#dropdowns * 34) + 8
-
 	-- Posicao relativa ao painel de conteudo. O overlay vive dentro do
 	-- contentPanel, por isso basta a diferenca para o painel. As
 	-- coordenadas de ecra sao divididas pela escala porque o painel esta
@@ -1494,8 +1688,20 @@ local function openDropdown(card, burger, sliders, title, dropdowns)
 		(origin.Y + card.AbsoluteSize.Y) / UI_SCALE + 6
 	)
 
+	-- A altura final vem do AutomaticSize do painel; a animacao abre a
+	-- gaveta de 0 ate essa altura.
 	panel.Size = UDim2.fromOffset(panel.Size.X.Offset, 0)
-	tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, height) }, 0.22, Enum.EasingStyle.Quint)
+	task.defer(function()
+		local height = panel.AbsoluteSize.Y
+		if height > 0 then
+			tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, height) }, 0.22, Enum.EasingStyle.Quart)
+		else
+			panel.Size = UDim2.fromOffset(panel.Size.X.Offset, 0)
+		end
+		-- O canvas da coluna e recalculado: o submenu conta como
+		-- conteudo da aba.
+		refreshCanvas()
+	end)
 
 	openPanel = panel
 	openBurger = burger
@@ -1847,24 +2053,29 @@ local function buildSection(sectionData, order)
 	})
 	header.Parent = section
 
+	-- Titulo em maiusculas + uma linha fina que preenche o resto do
+	-- espaco a direita (e o que da o ar "BBC Hub" as seccoes).
+	local titleText = string.upper(sectionData.name)
+	local titleWidth = math.max(60, (#titleText * 7) + 6)
+
 	label(header, {
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(400, 16),
-		Text = string.upper(sectionData.name),
+		Size = UDim2.fromOffset(titleWidth, 16),
+		Text = titleText,
 		TextSize = 11,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Text,
+		TextColor3 = Theme.Muted,
 		ZIndex = 6,
 	})
 
-	local divider = make("Frame", {
-		Size = UDim2.new(1, -8, 0, 1),
-		Position = UDim2.fromOffset(0, 19),
+	local headerLine = make("Frame", {
+		Size = UDim2.new(1, -(titleWidth + 14), 0, 1),
+		Position = UDim2.fromOffset(titleWidth + 10, 8),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Stroke,
-		ZIndex = 5,
+		ZIndex = 6,
 	})
-	divider.Parent = header
+	headerLine.Parent = header
 
 	-- A altura da grelha e calculada a mao: o UIGridLayout nao reajusta
 	-- o tamanho do pai, por isso nao podemos depender de AutomaticSize.
@@ -1908,46 +2119,27 @@ end
 local currentTab = 1
 local tabRefs = {}
 
--- Icone da aba: um quadrado com o "traço" do icone desenhado com formas
--- (nao ha pack de icones no single file). O desenho muda de aba para
--- aba, mas o tamanho e a posicao sao sempre os mesmos: e o que mantem
--- a coluna das abas alinhada.
-local TAB_ICON_SIZE = 16
-local TAB_ICON_X = 8
-local TAB_TEXT_X = 32
+-- Icone da aba: um quadrado ROXO de 15x15 com cantos arredondados, do
+-- lado esquerdo do texto. E o "falso icone" do BBC Hub (nao ha pack de
+-- icones no single file).
+local TAB_ICON_SIZE = 15
+local TAB_ICON_X = 2
+local TAB_TEXT_X = 25
 
-local function buildTabIcon(parent, index)
+local function buildTabIcon(parent)
 	local tile = make("Frame", {
 		Name = randomName(),
 		Size = UDim2.fromOffset(TAB_ICON_SIZE, TAB_ICON_SIZE),
 		Position = UDim2.new(0, TAB_ICON_X, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Surface2,
+		BackgroundColor3 = Theme.Accent,
 		ZIndex = 6,
 	})
-	corner(tile, 5)
+	corner(tile, 4)
 	tile.Parent = parent
 
-	-- 1 a 3 riscos, consoante a aba.
-	local marks = { 1, 2, 3, 2, 1, 3 }
-	local count = marks[((index - 1) % #marks) + 1]
-	local parts = {}
-	for i = 1, count do
-		local line = make("Frame", {
-			Name = randomName(),
-			Size = UDim2.fromOffset(i == 2 and 7 or 9, 1.5),
-			Position = UDim2.new(0, 3.5, 0, 5 + ((i - 1) * 2.6)),
-			BorderSizePixel = 0,
-			BackgroundColor3 = Theme.Muted,
-			ZIndex = 7,
-		})
-		corner(line, 1)
-		line.Parent = tile
-		table.insert(parts, line)
-	end
-
-	return parts
+	return tile
 end
 
 local function selectTab(index)
@@ -1955,11 +2147,8 @@ local function selectTab(index)
 	for i, ref in ipairs(tabRefs) do
 		local active = (i == index)
 		ref.Button.BackgroundColor3 = active and Theme.Surface2 or Theme.Surface
-		ref.Text.TextColor3 = active and Theme.Accent or Theme.Muted
+		ref.Text.TextColor3 = active and Theme.Text or Theme.Muted
 		ref.Indicator.Visible = active
-		for _, part in ipairs(ref.Icon or {}) do
-			tween(part, { BackgroundColor3 = active and Theme.Accent or Theme.Muted }, 0.15)
-		end
 	end
 end
 
@@ -1974,21 +2163,25 @@ local function renderTab(index)
 	for order, sectionData in ipairs(tabData.sections) do
 		buildSection(sectionData, order)
 	end
+	refreshCanvas()
 end
 
 for index, tabData in ipairs(TABS) do
 	local button = make("TextButton", {
 		Name = randomName(),
-		Size = UDim2.new(1, -32, 0, 34),
+		-- O botao e filho da SIDEBAR: e o UIListLayout dela que o poe
+		-- no sitio, com o mesmo espacamento para todas as abas.
+		Size = UDim2.new(1, -10, 0, 35),
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface,
 		Text = "",
 		AutoButtonColor = false,
-		LayoutOrder = index,
+		Visible = true,
+		LayoutOrder = index + 1,
 		ZIndex = 5,
 	})
 	corner(button, 8)
-	button.Parent = tabList
+	button.Parent = sidebar
 
 	local indicator = make("Frame", {
 		Size = UDim2.fromOffset(3, 16),
@@ -2002,7 +2195,7 @@ for index, tabData in ipairs(TABS) do
 	corner(indicator, 2)
 	indicator.Parent = button
 
-	local icon = buildTabIcon(button, index)
+	local icon = buildTabIcon(button)
 
 	local text = label(button, {
 		Position = UDim2.fromOffset(TAB_TEXT_X, 0),
@@ -2040,11 +2233,13 @@ for index, tabData in ipairs(TABS) do
 	tabRefs[index] = { Button = button, Indicator = indicator, Text = text, Icon = icon }
 end
 
--- Rodape da sidebar
-label(sidebar, {
+-- Rodape da sidebar. Vive na JANELA (nao na sidebar) para o UIListLayout
+-- da sidebar nao o arrastar para o fluxo das abas.
+local sidebarFooter = label(window, {
+	Name = "SidebarFooter",
 	Size = UDim2.fromOffset(SIDEBAR_W - 36, 16),
-	Position = UDim2.new(0, 18, 1, -30),
-	Text = "v1.0.0 • SINGLE FILE",
+	Position = UDim2.new(0, 18, 1, -32),
+	Text = "v1.1.0 • SINGLE FILE",
 	TextSize = 9,
 	Font = FONT,
 	TextColor3 = Theme.Muted,
@@ -2052,40 +2247,38 @@ label(sidebar, {
 })
 
 --=====================================================================
--- CARD DE PERFIL (INFERIOR ESQUERDO)
+-- CARD DE PERFIL (INFERIOR ESQUERDO DA JANELA)
+--
+-- Preso ao canto inferior esquerdo da janela principal (esta e uma
+-- janela, nao um painel solto no ecra).
 --=====================================================================
 
-local PROFILE_W, PROFILE_H = 250, 78
+local PROFILE_W, PROFILE_H = 180, 74
 
 local profile = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(PROFILE_W, PROFILE_H),
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.new(0, 15, 1, -15),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
 	Active = true,
-	ZIndex = 4,
+	-- Acima da sidebar e do conteudo.
+	ZIndex = 6,
 })
 corner(profile, 12)
 border(profile, Theme.Stroke, 1)
-profile.Parent = screenGui
-
-local profileScale = make("UIScale", { Scale = UI_SCALE })
-profileScale.Parent = profile
-
-do
-	local view = viewportSize()
-	profile.Position = UDim2.fromOffset(20, view.Y - (PROFILE_H * UI_SCALE) - 20)
-end
+profile.Parent = window
 
 local avatar = make("ImageLabel", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(52, 52),
-	Position = UDim2.new(0, 12, 0.5, 0),
+	Position = UDim2.new(0, 10, 0.5, 0),
 	AnchorPoint = Vector2.new(0, 0.5),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface,
 	ScaleType = Enum.ScaleType.Crop,
-	ZIndex = 5,
+	ZIndex = 7,
 })
 corner(avatar, 10)
 border(avatar, Theme.Stroke, 1)
@@ -2097,11 +2290,11 @@ local avatarInitial = make("TextLabel", {
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
 	Text = string.sub(string.upper(LocalPlayer.Name), 1, 1),
-	TextSize = 20,
+	TextSize = 18,
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Muted,
 	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 6,
+	ZIndex = 8,
 })
 avatarInitial.Parent = avatar
 
@@ -2118,31 +2311,31 @@ pcall(function()
 end)
 
 label(profile, {
-	Size = UDim2.fromOffset(PROFILE_W - 92, 18),
-	Position = UDim2.new(0, 76, 0, 12),
+	Size = UDim2.fromOffset(PROFILE_W - 70, 18),
+	Position = UDim2.new(0, 62, 0, 14),
 	Text = LocalPlayer.DisplayName,
-	TextSize = 13,
+	TextSize = 12,
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Text,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-	ZIndex = 5,
+	ZIndex = 7,
 })
 
 label(profile, {
-	Size = UDim2.fromOffset(PROFILE_W - 92, 14),
-	Position = UDim2.new(0, 76, 0, 31),
+	Size = UDim2.fromOffset(PROFILE_W - 70, 14),
+	Position = UDim2.new(0, 62, 0, 32),
 	Text = "@" .. LocalPlayer.Name,
 	TextSize = 10,
 	Font = FONT,
 	TextColor3 = Theme.Muted,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-	ZIndex = 5,
+	ZIndex = 7,
 })
 
 local ownerTag = make("TextLabel", {
 	Name = "Lbl",
-	Size = UDim2.fromOffset(56, 18),
-	Position = UDim2.new(0, 76, 0, 48),
+	Size = UDim2.fromOffset(52, 16),
+	Position = UDim2.new(0, 62, 0, 48),
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Accent,
 	BackgroundTransparency = 0.82,
@@ -2151,12 +2344,10 @@ local ownerTag = make("TextLabel", {
 	Font = FONT_BOLD,
 	TextColor3 = Theme.Accent,
 	TextXAlignment = Enum.TextXAlignment.Center,
-	ZIndex = 5,
+	ZIndex = 7,
 })
 corner(ownerTag, 5)
 ownerTag.Parent = profile
-
-makeDraggable(profile, profile)
 
 --=====================================================================
 -- PAINEL DE KEYBINDS (SUPERIOR DIREITO)
@@ -2329,6 +2520,14 @@ local sidebarCollapsed = false
 local function setSidebarCollapsed(collapsed)
 	sidebarCollapsed = collapsed
 	sidebar.Visible = not collapsed
+	-- O cartao de perfil e o rodape vivem na janela: tambem somem com a
+	-- sidebar.
+	if profile then
+		profile.Visible = not collapsed
+	end
+	if sidebarFooter then
+		sidebarFooter.Visible = not collapsed
+	end
 
 	local newX = collapsed and PANEL_PAD or CONTENT_X
 	local newW = collapsed and (WINDOW_W - (PANEL_PAD * 2)) or CONTENT_W
@@ -2337,6 +2536,7 @@ local function setSidebarCollapsed(collapsed)
 
 	scrollBody.Size = UDim2.fromOffset(newW - (BODY_PAD * 2), 0)
 	renderTab(currentTab)
+	refreshCanvas()
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
