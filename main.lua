@@ -445,24 +445,26 @@ local function randomGuiName()
 end
 
 --=====================================================================
--- TEMA (BBC Hub)
+-- TEMA (BBC Hub, monocromatico)
 --
--- Paleta exacta:
+-- Preto, cinza e branco. O Accent e a UNICA cor forte do menu e so
+-- aparece na tag "OWNER" do card de perfil.
+--
 --   Background  10, 10, 10   preto quase puro (janela + sidebar)
---   Surface     15, 15, 15   top bar e area de conteudo
---   Surface2    22, 22, 22   fundo dos cards/botoes
---   Stroke      40, 40, 40   bordas finas
---   Accent     170, 80, 255   roxo neon (botoes, icones, estados)
---   Text       255,255,255   texto principal
+--   Surface     15, 15, 15   paineis (top bar, conteudo)
+--   Surface2    25, 25, 25   botoes e cards
+--   Stroke      45, 45, 45   bordas finas
+--   Accent     200, 50, 255   roxo (SO a tag OWNER)
+--   Text       255,255,255   texto principal (bolinhas dos toggles)
 --   Muted      140,140,140   texto secundario
 --=====================================================================
 
 local Theme = {
 	Background = Color3.fromRGB(10, 10, 10),
 	Surface = Color3.fromRGB(15, 15, 15),
-	Surface2 = Color3.fromRGB(22, 22, 22),
-	Stroke = Color3.fromRGB(40, 40, 40),
-	Accent = Color3.fromRGB(170, 80, 255),
+	Surface2 = Color3.fromRGB(25, 25, 25),
+	Stroke = Color3.fromRGB(45, 45, 45),
+	Accent = Color3.fromRGB(200, 50, 255),
 	Text = Color3.fromRGB(255, 255, 255),
 	Muted = Color3.fromRGB(140, 140, 140),
 }
@@ -1015,7 +1017,7 @@ local logoMark = make("Frame", {
 	Size = UDim2.fromOffset(34, 34),
 	Position = UDim2.fromOffset(16, 10),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Accent,
+	BackgroundColor3 = Theme.Text,
 	ZIndex = 4,
 })
 corner(logoMark, 9)
@@ -1026,7 +1028,7 @@ label(logoMark, {
 	Text = "B",
 	TextSize = 18,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
+	TextColor3 = Theme.Background,
 	TextXAlignment = Enum.TextXAlignment.Center,
 	ZIndex = 5,
 })
@@ -1444,7 +1446,7 @@ local function buildSlider(parent, spec, order)
 		Text = tostring(spec.value) .. unit,
 		TextSize = 11,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Accent,
+		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 23,
 	})
@@ -1466,7 +1468,7 @@ local function buildSlider(parent, spec, order)
 	local fill = make("Frame", {
 		Size = UDim2.fromScale(0, 1),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Accent,
+		BackgroundColor3 = Theme.Muted,
 		ZIndex = 23,
 	})
 	corner(fill, 3)
@@ -1481,6 +1483,8 @@ local function buildSlider(parent, spec, order)
 		ZIndex = 24,
 	})
 	corner(knob, 6)
+	-- Bolinha BRANCA com anel escuro (para se ver no trilho claro).
+	border(knob, Theme.Background, 1)
 	knob.Parent = track
 
 	local function applyRatio(ratio)
@@ -1657,7 +1661,7 @@ local function openDropdown(card, burger, sliders, title, dropdowns)
 					Text = tostring(option),
 					TextSize = 11,
 					Font = FONT_MED,
-					TextColor3 = (tostring(option) == tostring(value)) and Theme.Accent or Theme.Text,
+					TextColor3 = Theme.Text,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					AutoButtonColor = false,
 					ZIndex = 91,
@@ -1716,7 +1720,7 @@ local function buildSwitch(card, state)
 		Position = UDim2.new(1, -48, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundColor3 = state and Theme.Accent or Theme.Stroke,
+		BackgroundColor3 = state and Theme.Text or Theme.Stroke,
 		ZIndex = 6,
 	})
 	corner(holder, 10)
@@ -1731,13 +1735,16 @@ local function buildSwitch(card, state)
 		ZIndex = 7,
 	})
 	corner(knob, 7)
+	-- Anel escuro: a bolinha e sempre BRANCA, mas continua a ver-se
+	-- quando o trilho fica branco (toggle ligado).
+	border(knob, Theme.Background, 1)
 	knob.Parent = holder
 
 	return holder, knob
 end
 
 local function applySwitch(holder, knob, state)
-	tween(holder, { BackgroundColor3 = state and Theme.Accent or Theme.Stroke }, 0.16)
+	tween(holder, { BackgroundColor3 = state and Theme.Text or Theme.Stroke }, 0.16)
 	tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.16)
 end
 
@@ -1775,7 +1782,7 @@ local function buildToggleCard(item, order)
 		Text = "☰",
 		TextSize = 15,
 		Font = FONT_BOLD,
-		TextColor3 = (item.sliders or item.dropdowns) and Theme.Accent or Theme.Muted,
+		TextColor3 = (item.sliders or item.dropdowns) and Theme.Text or Theme.Muted,
 		AutoButtonColor = false,
 		ZIndex = 6,
 	})
@@ -1832,7 +1839,7 @@ local function buildButtonCard(item, order)
 	local card = make("TextButton", {
 		Name = randomName(),
 		Size = UDim2.fromOffset(0, GRID_CARD_H),
-		BackgroundColor3 = isAccent and Theme.Accent or Theme.Surface2,
+		BackgroundColor3 = isAccent and Theme.Text or Theme.Surface2,
 		BorderSizePixel = 0,
 		Text = "",
 		AutoButtonColor = false,
@@ -1863,14 +1870,14 @@ local function buildButtonCard(item, order)
 	card.MouseEnter:Connect(function()
 		tween(card, {
 			BackgroundColor3 = isAccent
-				and Theme.Accent:Lerp(Color3.fromRGB(0, 0, 0), 0.18)
+				and Theme.Text:Lerp(Color3.fromRGB(0, 0, 0), 0.18)
 				or Theme.Stroke,
 		}, 0.15)
 	end)
 
 	card.MouseLeave:Connect(function()
 		tween(card, {
-			BackgroundColor3 = isAccent and Theme.Accent or Theme.Surface2,
+			BackgroundColor3 = isAccent and Theme.Text or Theme.Surface2,
 		}, 0.15)
 	end)
 
@@ -1907,11 +1914,9 @@ local function buildChoiceCard(item, order)
 	})
 
 	local function setActive(isActive)
-		stroke.Color = isActive and Theme.Accent or Theme.Stroke
-		card.BackgroundColor3 = isActive
-			and Theme.Accent:Lerp(Theme.Background, 0.8)
-			or Theme.Surface2
-		text.TextColor3 = isActive and Theme.Accent or Theme.Text
+		stroke.Color = isActive and Theme.Text or Theme.Stroke
+		card.BackgroundColor3 = isActive and Theme.Surface or Theme.Surface2
+		text.TextColor3 = Theme.Text
 	end
 
 	setActive(false)
@@ -1986,11 +1991,11 @@ local function buildInputCard(item, order)
 		Position = UDim2.new(1, -38, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Accent,
+		BackgroundColor3 = Theme.Text,
 		Text = "▶",
 		TextSize = 12,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Text,
+		TextColor3 = Theme.Background,
 		AutoButtonColor = false,
 		ZIndex = 7,
 	})
@@ -2133,7 +2138,7 @@ local function buildTabIcon(parent)
 		Position = UDim2.new(0, TAB_ICON_X, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Accent,
+		BackgroundColor3 = Theme.Stroke,
 		ZIndex = 6,
 	})
 	corner(tile, 4)
@@ -2188,7 +2193,7 @@ for index, tabData in ipairs(TABS) do
 		Position = UDim2.new(0, -6, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Accent,
+		BackgroundColor3 = Theme.Text,
 		Visible = false,
 		ZIndex = 6,
 	})
@@ -2342,7 +2347,7 @@ local ownerTag = make("TextLabel", {
 	Text = "OWNER",
 	TextSize = 9,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.Accent,
+	TextColor3 = Theme.Text,
 	TextXAlignment = Enum.TextXAlignment.Center,
 	ZIndex = 7,
 })
@@ -2483,11 +2488,11 @@ local floating = make("TextButton", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(46, 46),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Accent,
+	BackgroundColor3 = Theme.Text,
 	Text = "☰",
 	TextSize = 20,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.Text,
+	TextColor3 = Theme.Background,
 	AutoButtonColor = false,
 	ZIndex = 5,
 })
