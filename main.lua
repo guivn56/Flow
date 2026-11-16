@@ -5,6 +5,13 @@
 	REGRA: apenas UI + prints. Sem logica de cheat (sem CFrame, sem hooks de
 	jogo, sem Raycast, sem ESP math). A camada de seguranca serve apenas
 	para o proprio script nao ser identificado pelo jogo.
+
+	VERSAO 1.1
+	- main.lua limpo (sem ofuscacao): o ficheiro e o que se le, tal e qual.
+	- corner(): o UICorner e ligado com a propriedade Parent.
+	  NUNCA usar object:AddChild(...) - o Delta nao expoe esse metodo
+	  ("AddChild is not a valid member of Frame").
+	- Os objectos da interface sao SEMPRE ligados por .Parent = ...
 ]]
 
 --=====================================================================
