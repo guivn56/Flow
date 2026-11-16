@@ -500,8 +500,15 @@ local function make(className, properties)
 	return object
 end
 
-local function corner(object, radius)
-	object:AddChild(make("UICorner", { CornerRadius = UDim.new(radius, 0) }))
+-- Cantos arredondados.
+--
+-- O UICorner e posto com a propriedade Parent (nunca com :AddChild(),
+-- que o Delta nao expõe).
+local function corner(parent, radius)
+	local newCorner = Instance.new("UICorner")
+	newCorner.CornerRadius = UDim.new(0, radius)
+	newCorner.Parent = parent
+	return newCorner
 end
 
 local function border(object, color, thickness)
