@@ -481,12 +481,10 @@ local WINDOW_W, WINDOW_H = 900, 620
 local SIDEBAR_W = 210
 local TOPBAR_H = 54
 local PANEL_PAD = 12
-local BODY_PAD = 14
 local GRID_CARD_H = 44
 local GRID_GAP = 12
 local GRID_ROW_GAP = 10
 local TAB_H = 35
-local CARD_RADIUS = 9
 
 local CONTENT_X = SIDEBAR_W + PANEL_PAD
 local CONTENT_Y = TOPBAR_H + PANEL_PAD
@@ -532,6 +530,25 @@ local function computeUIScale()
 end
 
 local UI_SCALE = computeUIScale()
+
+--=====================================================================
+-- DESIGN SYSTEM (tokens)
+--
+-- Todas as medidas do menu sao controladas aqui: padding, cantos,
+-- bordas, tipografia e as cores de hover. Nao ha Offset solto pelo
+-- codigo.
+--=====================================================================
+
+local Design = {
+	Padding = 10,                       -- UIPadding de todos os contentores
+	Corner = 6,                         -- cantos dos botoes/cards
+	WindowCorner = 10,                  -- cantos da janela principal
+	StrokeThickness = 1,                -- bordas de 1 px
+	SectionTitleSize = 12,              -- titulos de secao (GothamBold)
+	TextSize = 13,                      -- texto dos botoes (GothamMedium)
+	Hover = Color3.fromRGB(35, 35, 35), -- cor de hover dos botoes
+	HoverOut = Color3.fromRGB(25, 25, 25),
+}
 
 --=====================================================================
 -- UTILITARIOS
@@ -601,41 +618,95 @@ local function tween(object, properties, duration, style)
 	return animation
 end
 
--- Arraste com MouseButton1 e Touch
+-- Arraste com efeito premium (drag ghost).
+--
+-- Enquanto a janela e arrastada fica um "fantasma" vermelho, do
+-- tamanho dela e na posicao onde estava. A janela segue o rato/dedo e,
+-- ao largar, o fantasma desaparece. (Tecnica do AirFlowLibrary: o
+-- fantasma nasce quando o ponteiro passa do limiar de 3 px.)
 local function makeDraggable(frame, handle)
 	local dragging = false
-	local dragOrigin = Vector2.zero
+	local moved = false
+	local pressPoint = Vector2.zero
 	local startPosition = UDim2.new(0, 0, 0, 0)
+	local ghost = nil
+
+	local function isPress(input)
+		return input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+	end
+
+	local function isMove(input)
+		return input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch
+	end
+
+	local function makeGhost()
+		if ghost then
+			return
+		end
+		ghost = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.fromOffset(frame.AbsoluteSize.X, frame.AbsoluteSize.Y),
+			Position = UDim2.fromOffset(frame.AbsolutePosition.X, frame.AbsolutePosition.Y),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Color3.fromRGB(255, 0, 0),
+			BackgroundTransparency = 0.5,
+			-- O fantasma fica ATRAS da janela.
+			ZIndex = -1,
+		})
+		corner(ghost, Design.WindowCorner)
+		ghost.Parent = frame.Parent
+	end
+
+	local function dropGhost()
+		if ghost then
+			if ghost.Parent then
+				ghost:Destroy()
+			end
+			ghost = nil
+		end
+	end
 
 	handle.InputBegan:Connect(function(input)
-		local mouse = input.UserInputType == Enum.UserInputType.MouseButton1
-		local touch = input.UserInputType == Enum.UserInputType.Touch
-		if mouse or touch then
-			dragging = true
-			dragOrigin = input.Position
-			startPosition = frame.Position
+		if not isPress(input) then
+			return
 		end
-	end)
-
-	handle.InputEnded:Connect(function()
-		dragging = false
+		dragging = true
+		moved = false
+		pressPoint = input.Position
+		startPosition = frame.Position
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
+		if not dragging or not isMove(input) then
+			return
+		end
+		if not moved then
+			if (input.Position - pressPoint).Magnitude <= 3 then
+				return
+			end
+			moved = true
+			makeGhost()
+		end
+		-- O delta do ecra e dividido pela escala (componente a
+		-- componente: o Roblox nao divide um Vector2 por um numero). A
+		-- posicao da janela e em unidades do pai, nao em pixels de ecra.
+		local deltaX = (input.Position.X - pressPoint.X) / UI_SCALE
+		local deltaY = (input.Position.Y - pressPoint.Y) / UI_SCALE
+		frame.Position = UDim2.fromOffset(
+			startPosition.X.Offset + deltaX,
+			startPosition.Y.Offset + deltaY
+		)
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
 		if not dragging then
 			return
 		end
-		local moved = input.UserInputType == Enum.UserInputType.MouseMovement
-		local dragged = input.UserInputType == Enum.UserInputType.Touch
-		if moved or dragged then
-			local delta = input.Position - dragOrigin
-			frame.Position = UDim2.new(
-				startPosition.X.Scale,
-				startPosition.X.Offset + delta.X,
-				startPosition.Y.Scale,
-				startPosition.Y.Offset + delta.Y
-			)
-		end
+		dragging = false
+		moved = false
+		dropGhost()
 	end)
 end
 
@@ -704,7 +775,7 @@ function Nexus.CreateWindow(title)
 		Active = true,
 		ZIndex = 2,
 	})
-	corner(frame, 12)
+	corner(frame, Design.WindowCorner)
 	border(frame, Theme.Stroke, 1)
 	frame.Parent = gui
 
@@ -725,7 +796,7 @@ function Nexus.CreateWindow(title)
 		ImageTransparency = 0.85,
 		ZIndex = -2,
 	})
-	corner(hex, 12)
+	corner(hex, Design.WindowCorner)
 	hex.Parent = frame
 
 	-- ---------------------------------------------------------------
@@ -739,7 +810,7 @@ function Nexus.CreateWindow(title)
 		Active = true,
 		ZIndex = 3,
 	})
-	corner(topbar, 12)
+	corner(topbar, Design.WindowCorner)
 	topbar.Parent = frame
 
 	-- Patch: tapa os cantos de baixo da barra.
@@ -769,7 +840,7 @@ function Nexus.CreateWindow(title)
 		BackgroundColor3 = Theme.Text,
 		ZIndex = 4,
 	})
-	corner(logo, 9)
+	corner(logo, Design.Corner)
 	logo.Parent = topbar
 
 	label(logo, {
@@ -818,7 +889,7 @@ function Nexus.CreateWindow(title)
 		AutoButtonColor = false,
 		ZIndex = 4,
 	})
-	corner(profileButton, 8)
+	corner(profileButton, Design.Corner)
 	border(profileButton, Theme.Stroke, 1)
 	profileButton.Parent = topbar
 
@@ -848,14 +919,15 @@ function Nexus.CreateWindow(title)
 		local button = make("TextButton", {
 			Name = randomName(),
 			Size = UDim2.fromOffset(28, 28),
-			Position = UDim2.new(1, xOffset, 0, 13),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(1, xOffset, 0.5, 0),
 			BorderSizePixel = 0,
 			BackgroundColor3 = Theme.Surface2,
 			Text = "",
 			AutoButtonColor = false,
 			ZIndex = 4,
 		})
-		corner(button, 8)
+		corner(button, Design.Corner)
 		border(button, Theme.Stroke, 1)
 		button.Parent = topbar
 
@@ -867,7 +939,7 @@ function Nexus.CreateWindow(title)
 				BackgroundColor3 = Theme.Muted,
 				ZIndex = 5,
 			})
-			corner(lens, 6)
+			corner(lens, Design.Corner)
 			local hole = make("Frame", {
 				Size = UDim2.fromOffset(6, 6),
 				Position = UDim2.fromOffset(3, 3),
@@ -875,7 +947,7 @@ function Nexus.CreateWindow(title)
 				BackgroundColor3 = Theme.Surface2,
 				ZIndex = 6,
 			})
-			corner(hole, 3)
+			corner(hole, Design.Corner)
 			hole.Parent = lens
 			lens.Parent = button
 
@@ -887,7 +959,7 @@ function Nexus.CreateWindow(title)
 				BackgroundColor3 = Theme.Muted,
 				ZIndex = 5,
 			})
-			corner(handle, 1)
+			corner(handle, Design.Corner)
 			handle.Parent = button
 		elseif kind == "lua" then
 			label(button, {
@@ -907,7 +979,7 @@ function Nexus.CreateWindow(title)
 				BackgroundColor3 = Theme.Muted,
 				ZIndex = 5,
 			})
-			corner(gear, 7)
+			corner(gear, Design.Corner)
 			local hole = make("Frame", {
 				Size = UDim2.fromOffset(5, 5),
 				Position = UDim2.fromOffset(4.5, 4.5),
@@ -915,7 +987,7 @@ function Nexus.CreateWindow(title)
 				BackgroundColor3 = Theme.Surface2,
 				ZIndex = 6,
 			})
-			corner(hole, 3)
+			corner(hole, Design.Corner)
 			hole.Parent = gear
 			gear.Parent = button
 
@@ -928,13 +1000,13 @@ function Nexus.CreateWindow(title)
 					BackgroundColor3 = Theme.Muted,
 					ZIndex = 5,
 				})
-				corner(tooth, 1)
+				corner(tooth, Design.Corner)
 				tooth.Parent = button
 			end
 		end
 
 		button.MouseEnter:Connect(function()
-			tween(button, { BackgroundColor3 = Theme.Stroke }, 0.15)
+			tween(button, { BackgroundColor3 = Design.Hover }, 0.15)
 		end)
 		button.MouseLeave:Connect(function()
 			tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
@@ -944,9 +1016,44 @@ function Nexus.CreateWindow(title)
 		end)
 	end
 
-	iconButton(-74, "search")
-	iconButton(-42, "lua")
-	iconButton(-10, "settings")
+	-- Os icones estao centrados na altura da barra (AnchorPoint 0,0.5)
+	-- para nao ficarem cortados em cima.
+	iconButton(-116, "search")
+	iconButton(-86, "lua")
+	iconButton(-56, "settings")
+
+	-- Botao X: fecha a janela (o botao flutuante traz-la de volta).
+	local closeButton = make("TextButton", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(28, 28),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(1, -14, 0.5, 0),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		Text = "✕",
+		TextSize = 13,
+		Font = FONT_BOLD,
+		TextColor3 = Theme.Muted,
+		AutoButtonColor = false,
+		ZIndex = 4,
+	})
+	corner(closeButton, Design.Corner)
+	border(closeButton, Theme.Stroke, 1)
+	closeButton.Parent = topbar
+
+	closeButton.MouseEnter:Connect(function()
+		tween(closeButton, { BackgroundColor3 = Design.Hover, TextColor3 = Theme.Text }, 0.15)
+	end)
+	closeButton.MouseLeave:Connect(function()
+		tween(closeButton, { BackgroundColor3 = Theme.Surface2, TextColor3 = Theme.Muted }, 0.15)
+	end)
+	closeButton.MouseButton1Click:Connect(function()
+		log("Interface fechada")
+		frame.Visible = false
+		if NexusWindow and NexusWindow.Floating then
+			NexusWindow.Floating.Visible = true
+		end
+	end)
 
 	makeDraggable(frame, topbar)
 
@@ -975,10 +1082,10 @@ function Nexus.CreateWindow(title)
 	divider.Parent = frame
 
 	local sidebarPadding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 0),
-		PaddingTop = UDim.new(0, 14),
-		PaddingBottom = UDim.new(0, 92),
+		PaddingLeft = UDim.new(0, Design.Padding),
+		PaddingRight = UDim.new(0, Design.Padding),
+		PaddingTop = UDim.new(0, Design.Padding),
+		PaddingBottom = UDim.new(0, Design.Padding),
 	})
 	sidebarPadding.Parent = sidebar
 
@@ -1012,7 +1119,7 @@ function Nexus.CreateWindow(title)
 		ClipsDescendants = true,
 		ZIndex = 3,
 	})
-	corner(content, 10)
+	corner(content, Design.WindowCorner)
 	border(content, Theme.Stroke, 1)
 	content.Parent = frame
 
@@ -1029,7 +1136,7 @@ function Nexus.CreateWindow(title)
 		Active = true,
 		ZIndex = 6,
 	})
-	corner(profile, 12)
+	corner(profile, Design.WindowCorner)
 	border(profile, Theme.Stroke, 1)
 	profile.Parent = frame
 
@@ -1043,7 +1150,7 @@ function Nexus.CreateWindow(title)
 		ScaleType = Enum.ScaleType.Crop,
 		ZIndex = 7,
 	})
-	corner(avatar, 10)
+	corner(avatar, Design.Corner)
 	border(avatar, Theme.Stroke, 1)
 	avatar.Parent = profile
 
@@ -1110,7 +1217,7 @@ function Nexus.CreateWindow(title)
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 7,
 	})
-	corner(ownerTag, 5)
+	corner(ownerTag, Design.Corner)
 	ownerTag.Parent = profile
 
 	local footer = label(frame, {
@@ -1186,10 +1293,10 @@ function Nexus.CreateTab(name)
 
 	-- Padding do ScrollingFrame (nada de posicoes fixas no conteudo).
 	local padding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, BODY_PAD),
-		PaddingRight = UDim.new(0, BODY_PAD),
-		PaddingTop = UDim.new(0, BODY_PAD),
-		PaddingBottom = UDim.new(0, BODY_PAD),
+		PaddingLeft = UDim.new(0, Design.Padding),
+		PaddingRight = UDim.new(0, Design.Padding),
+		PaddingTop = UDim.new(0, Design.Padding),
+		PaddingBottom = UDim.new(0, Design.Padding),
 	})
 	padding.Parent = scroll
 
@@ -1232,7 +1339,7 @@ function Nexus.CreateTab(name)
 		LayoutOrder = #NexusTabs + 2,
 		ZIndex = 5,
 	})
-	corner(button, 8)
+	corner(button, Design.Corner)
 	button.Parent = NexusWindow.Sidebar
 
 	local icon = make("Frame", {
@@ -1244,7 +1351,7 @@ function Nexus.CreateTab(name)
 		BackgroundColor3 = Theme.Stroke,
 		ZIndex = 6,
 	})
-	corner(icon, 4)
+	corner(icon, Design.Corner)
 	icon.Parent = button
 
 	local indicator = make("Frame", {
@@ -1256,7 +1363,7 @@ function Nexus.CreateTab(name)
 		Visible = false,
 		ZIndex = 6,
 	})
-	corner(indicator, 2)
+	corner(indicator, Design.Corner)
 	indicator.Parent = button
 
 	local text = label(button, {
@@ -1302,7 +1409,7 @@ function Nexus.CreateTab(name)
 
 	button.MouseEnter:Connect(function()
 		if not indicator.Visible then
-			tween(button, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+			tween(button, { BackgroundColor3 = Design.Hover }, 0.15)
 		end
 	end)
 
@@ -1325,6 +1432,16 @@ function Nexus.RefreshCanvases()
 			end
 		end)
 	end
+end
+
+-- Hover suave de um card (25,25,25 -> 35,35,35).
+local function hoverCard(card)
+	card.MouseEnter:Connect(function()
+		tween(card, { BackgroundColor3 = Design.Hover }, 0.15)
+	end)
+	card.MouseLeave:Connect(function()
+		tween(card, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+	end)
 end
 
 -- ---------------------------------------------------------------------
@@ -1362,13 +1479,13 @@ function Nexus.CreateSection(parent, title)
 	header.Parent = section
 
 	local titleText = string.upper(tostring(title or ""))
-	local titleWidth = math.max(60, (#titleText * 7) + 6)
+	local titleWidth = math.max(60, (#titleText * 8) + 8)
 
 	label(header, {
 		Position = UDim2.fromOffset(0, 0),
 		Size = UDim2.fromOffset(titleWidth, 16),
 		Text = titleText,
-		TextSize = 11,
+		TextSize = Design.SectionTitleSize,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
 		ZIndex = 6,
@@ -1441,14 +1558,15 @@ function Nexus.CreateSlider(parent, title, min, max, default)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, CARD_RADIUS)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
+	hoverCard(card)
 
 	label(card, {
 		Position = UDim2.fromOffset(12, 6),
 		Size = UDim2.new(1, -80, 0, 16),
 		Text = tostring(title or ""),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		ZIndex = 6,
@@ -1458,7 +1576,7 @@ function Nexus.CreateSlider(parent, title, min, max, default)
 		Position = UDim2.new(1, -62, 0, 8),
 		Size = UDim2.fromOffset(50, 16),
 		Text = tostring(default),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_BOLD,
 		TextColor3 = Theme.Muted,
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -1475,7 +1593,7 @@ function Nexus.CreateSlider(parent, title, min, max, default)
 		AutoButtonColor = false,
 		ZIndex = 6,
 	})
-	corner(track, 3)
+	corner(track, Design.Corner)
 	track.Parent = card
 
 	local fill = make("Frame", {
@@ -1484,7 +1602,7 @@ function Nexus.CreateSlider(parent, title, min, max, default)
 		BackgroundColor3 = Theme.Muted,
 		ZIndex = 7,
 	})
-	corner(fill, 3)
+	corner(fill, Design.Corner)
 	fill.Parent = track
 
 	local knob = make("Frame", {
@@ -1495,7 +1613,7 @@ function Nexus.CreateSlider(parent, title, min, max, default)
 		BackgroundColor3 = Theme.Text,
 		ZIndex = 8,
 	})
-	corner(knob, 6)
+	corner(knob, Design.Corner)
 	border(knob, Theme.Background, 1)
 	knob.Parent = track
 
@@ -1587,14 +1705,15 @@ function Nexus.CreateDropdown(parent, title, options)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, CARD_RADIUS)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
+	hoverCard(card)
 
 	label(card, {
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.new(1, -140, 1, 0),
 		Text = tostring(title or ""),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1610,14 +1729,14 @@ function Nexus.CreateDropdown(parent, title, options)
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Surface,
 		Text = tostring(value),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		AutoButtonColor = false,
 		ZIndex = 7,
 	})
-	corner(valueButton, 7)
+	corner(valueButton, Design.Corner)
 	border(valueButton, Theme.Stroke, 1)
 	valueButton.Parent = card
 
@@ -1647,7 +1766,7 @@ function Nexus.CreateDropdown(parent, title, options)
 			ClipsDescendants = true,
 			ZIndex = 90,
 		})
-		corner(list, 8)
+		corner(list, Design.Corner)
 		border(list, Theme.Stroke, 1)
 		list.Parent = Nexus.CurrentOverlay()
 
@@ -1723,14 +1842,15 @@ function Nexus.CreateInput(parent, title, placeholder)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, CARD_RADIUS)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
+	hoverCard(card)
 
 	label(card, {
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.fromOffset(120, 1, 0),
 		Text = tostring(title or ""),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1754,7 +1874,7 @@ function Nexus.CreateInput(parent, title, placeholder)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 7,
 	})
-	corner(box, 7)
+	corner(box, Design.Corner)
 	border(box, Theme.Stroke, 1)
 	box.Parent = card
 
@@ -1790,14 +1910,15 @@ function Nexus.CreateKeybind(parent, title, defaultKey)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, CARD_RADIUS)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
+	hoverCard(card)
 
 	label(card, {
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.new(1, -140, 1, 0),
 		Text = tostring(title or ""),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1816,7 +1937,7 @@ function Nexus.CreateKeybind(parent, title, defaultKey)
 		AutoButtonColor = false,
 		ZIndex = 7,
 	})
-	corner(chip, 7)
+	corner(chip, Design.Corner)
 	border(chip, Theme.Stroke, 1)
 	chip.Parent = card
 
@@ -1885,7 +2006,7 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 		AutoButtonColor = false,
 		ZIndex = 5,
 	})
-	corner(card, CARD_RADIUS)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
 
 	local burger = make("TextButton", {
@@ -1908,7 +2029,7 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 		Position = UDim2.fromOffset(36, 0),
 		Size = UDim2.new(1, -92, 1, 0),
 		Text = tostring(title or ""),
-		TextSize = 12,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = Theme.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1925,7 +2046,7 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 		BackgroundColor3 = state and Theme.Text or Theme.Stroke,
 		ZIndex = 6,
 	})
-	corner(holder, 10)
+	corner(holder, Design.Corner)
 	holder.Parent = card
 
 	local knob = make("Frame", {
@@ -1936,13 +2057,14 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 		BackgroundColor3 = Theme.Text,
 		ZIndex = 7,
 	})
-	corner(knob, 7)
+	corner(knob, Design.Corner)
 	border(knob, Theme.Background, 1)
 	knob.Parent = holder
 
 	local function applySwitch()
-		tween(holder, { BackgroundColor3 = state and Theme.Text or Theme.Stroke }, 0.16)
-		tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.16)
+		-- A bolinha desliza com TweenService (Quart).
+		tween(holder, { BackgroundColor3 = state and Theme.Text or Theme.Stroke }, 0.18, Enum.EasingStyle.Quart)
+		tween(knob, { Position = UDim2.new(state and 1 or 0, state and -7 or 7, 0.5, 0) }, 0.18, Enum.EasingStyle.Quart)
 	end
 
 	card.MouseButton1Click:Connect(function()
@@ -1955,7 +2077,7 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 	end)
 
 	card.MouseEnter:Connect(function()
-		tween(card, { BackgroundColor3 = Theme.Stroke }, 0.15)
+		tween(card, { BackgroundColor3 = Design.Hover }, 0.15)
 	end)
 	card.MouseLeave:Connect(function()
 		tween(card, { BackgroundColor3 = Theme.Surface2 }, 0.15)
@@ -2003,7 +2125,7 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 			ClipsDescendants = true,
 			ZIndex = 40,
 		})
-		corner(panel, 10)
+		corner(panel, Design.Corner)
 		border(panel, Theme.Stroke, 1)
 		panel.Parent = Nexus.CurrentOverlay()
 
@@ -2014,10 +2136,10 @@ function Nexus.CreateToggle(parent, title, default, subElements, onChange)
 		layout.Parent = panel
 
 		local padding = make("UIPadding", {
-			PaddingLeft = UDim.new(0, 12),
-			PaddingRight = UDim.new(0, 12),
-			PaddingTop = UDim.new(0, 10),
-			PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, Design.Padding),
+			PaddingRight = UDim.new(0, Design.Padding),
+			PaddingTop = UDim.new(0, Design.Padding),
+			PaddingBottom = UDim.new(0, Design.Padding),
 		})
 		padding.Parent = panel
 
@@ -2129,7 +2251,7 @@ function Nexus.CreateNotification(text, duration)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 41,
 	})
-	corner(toast, 10)
+	corner(toast, Design.Corner)
 	border(toast, Theme.Stroke, 1)
 	toast.Parent = holder
 
@@ -2272,15 +2394,23 @@ local function infoCard(parent)
 		BackgroundColor3 = Theme.Surface2,
 		ZIndex = 5,
 	})
-	corner(card, 12)
+	corner(card, Design.Corner)
 	border(card, Theme.Stroke, 1)
 	card.Parent = parent
 
+	-- Os textos do card empilham-se com um UIListLayout (nada de
+	-- Positions fixos).
+	local layout = make("UIListLayout", {
+		Padding = UDim.new(0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	layout.Parent = card
+
 	local padding = make("UIPadding", {
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
+		PaddingLeft = UDim.new(0, Design.Padding),
+		PaddingRight = UDim.new(0, Design.Padding),
+		PaddingTop = UDim.new(0, Design.Padding),
+		PaddingBottom = UDim.new(0, Design.Padding),
 	})
 	padding.Parent = card
 
@@ -2314,7 +2444,7 @@ end
 local function infoRow(parent, title, value, muted)
 	local row = make("Frame", {
 		Name = randomName(),
-		Size = UDim2.new(1, -28, 0, 20),
+		Size = UDim2.new(1, 0, 0, 20),
 		BackgroundTransparency = 1,
 		ZIndex = 6,
 	})
@@ -2322,19 +2452,20 @@ local function infoRow(parent, title, value, muted)
 
 	label(row, {
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(110, 18),
+		Size = UDim2.new(1, -140, 1, 0),
 		Text = title,
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT,
 		TextColor3 = Theme.Muted,
 		ZIndex = 7,
 	})
 
 	label(row, {
-		Position = UDim2.new(1, -130, 0, 0),
-		Size = UDim2.fromOffset(130, 18),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.fromOffset(130, 20),
 		Text = tostring(value or "-"),
-		TextSize = 11,
+		TextSize = Design.TextSize,
 		Font = FONT_MED,
 		TextColor3 = muted and Theme.Muted or Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -2411,15 +2542,16 @@ do
 		Name = randomName(),
 		Size = UDim2.new(1, 0, 0, GRID_CARD_H),
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Text,
+		BackgroundColor3 = Theme.Surface2,
 		Text = "Join Discord",
-		TextSize = 12,
-		Font = FONT_BOLD,
-		TextColor3 = Theme.Background,
+		TextSize = Design.TextSize,
+		Font = FONT_MED,
+		TextColor3 = Theme.Text,
 		AutoButtonColor = false,
 		ZIndex = 5,
 	})
-	corner(discord, CARD_RADIUS)
+	corner(discord, Design.Corner)
+	border(discord, Theme.Stroke, 1)
 	discord.Parent = right
 
 	discord.MouseButton1Click:Connect(function()
@@ -2428,11 +2560,11 @@ do
 	end)
 
 	discord.MouseEnter:Connect(function()
-		tween(discord, { BackgroundColor3 = Theme.Text:Lerp(Color3.fromRGB(0, 0, 0), 0.15) }, 0.15)
+		tween(discord, { BackgroundColor3 = Design.Hover }, 0.15)
 	end)
 
 	discord.MouseLeave:Connect(function()
-		tween(discord, { BackgroundColor3 = Theme.Text }, 0.15)
+		tween(discord, { BackgroundColor3 = Theme.Surface2 }, 0.15)
 	end)
 
 	-- Creditos
@@ -2731,7 +2863,7 @@ local keyPanel = make("Frame", {
 	Visible = false,
 	ZIndex = 40,
 })
-corner(keyPanel, 12)
+corner(keyPanel, Design.Corner)
 border(keyPanel, Theme.Stroke, 1)
 keyPanel.Parent = window.Gui
 
@@ -2796,7 +2928,7 @@ for index, entry in ipairs(KEYBINDS) do
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 42,
 	})
-	corner(chip, 5)
+	corner(chip, Design.Corner)
 	chip.Parent = row
 
 	label(row, {
@@ -2816,19 +2948,21 @@ makeDraggable(keyPanel, keyHeader)
 --=====================================================================
 -- BOTAO FLUTUANTE (REABRIR O MENU)
 --=====================================================================
+-- Botao flutuante: redondo, com o "N", no canto ESQUERDO do ecra.
+-- E arrastavel (rato e toque) e traz a janela de volta.
 local floating = make("TextButton", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(46, 46),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Text,
-	Text = "☰",
+	BackgroundColor3 = Theme.Surface2,
+	Text = "N",
 	TextSize = 20,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.Background,
+	TextColor3 = Theme.Text,
 	AutoButtonColor = false,
 	ZIndex = 50,
 })
-corner(floating, 14)
+corner(floating, 23)
 border(floating, Theme.Stroke, 1)
 floating.Parent = window.Gui
 
@@ -2838,15 +2972,32 @@ floatingScale.Parent = floating
 do
 	local view = viewportSize()
 	floating.Position = UDim2.fromOffset(
-		view.X - (46 * UI_SCALE) - 20,
-		view.Y - (46 * UI_SCALE) - 20
+		20,
+		math.max(20, view.Y - (46 * UI_SCALE) - 20)
 	)
 end
 
-floating.MouseButton1Click:Connect(function()
-	window.Frame.Visible = not window.Frame.Visible
-	log("Menu: " .. (window.Frame.Visible and "aberto" or "fechado"))
+-- Arrastar o botao flutuante (com o mesmo fantasma do menu).
+makeDraggable(floating, floating)
+
+floating.MouseEnter:Connect(function()
+	tween(floating, { BackgroundColor3 = Design.Hover }, 0.15)
 end)
+
+floating.MouseLeave:Connect(function()
+	tween(floating, { BackgroundColor3 = Theme.Surface2 }, 0.15)
+end)
+
+floating.MouseButton1Click:Connect(function()
+	local show = not window.Frame.Visible
+	window.Frame.Visible = show
+	floating.Visible = not show
+	log("Menu: " .. (show and "aberto" or "fechado"))
+end)
+
+-- O X da topbar esconde a janela: o botao flutuante aparece.
+window.Floating = floating
+floating.Visible = false
 
 --=====================================================================
 -- INICIALIZACAO
