@@ -439,6 +439,15 @@ end
 
 --=====================================================================
 -- TEMA
+--
+-- Paleta exacta (pedida):
+--   Background  8,  8,  8   preto quase puro (fundo da janela)
+--   Surface    15, 15, 15   fundo escuro das abas/barras
+--   Surface2   25, 25, 25   fundo dos cards/botoes
+--   Stroke     45, 45, 45   borda dos botoes
+--   Accent    170, 80, 255   roxo (SO nos botoes/controlos)
+--   Text      255,255,255   texto branco
+--   Muted     140,140,140   texto secundario
 --=====================================================================
 
 local Theme = {
@@ -448,7 +457,7 @@ local Theme = {
 	Stroke = Color3.fromRGB(45, 45, 45),
 	Accent = Color3.fromRGB(170, 80, 255),
 	Text = Color3.fromRGB(255, 255, 255),
-	TextDim = Color3.fromRGB(150, 150, 150),
+	Muted = Color3.fromRGB(140, 140, 140),
 }
 
 local FONT = Enum.Font.Gotham
@@ -653,9 +662,10 @@ local TABS = {
 						type = "toggle",
 						label = "Silent Aim",
 						sliders = {
-							{ name = "FOV", min = 0, max = 360, value = 90, unit = "°" },
-							{ name = "Smoothness", min = 0, max = 100, value = 50, unit = "%" },
-							{ name = "Hit Radius", min = 0, max = 50, value = 12, unit = "px" },
+							{ name = "Hit Chance", min = 0, max = 100, value = 50, unit = "%" },
+						},
+						dropdowns = {
+							{ name = "Target Part", options = { "Head", "Torso", "Nearest" }, value = "Head" },
 						},
 					},
 					{
@@ -663,8 +673,10 @@ local TABS = {
 						label = "Aimbot",
 						sliders = {
 							{ name = "FOV", min = 0, max = 360, value = 120, unit = "°" },
-							{ name = "Target Part", min = 0, max = 100, value = 60, unit = "%" },
 							{ name = "Smoothness", min = 0, max = 100, value = 40, unit = "%" },
+						},
+						dropdowns = {
+							{ name = "Aim Part", options = { "Head", "Upper Torso", "Humanoid" }, value = "Head" },
 						},
 					},
 					{ type = "toggle", label = "Auto Shoot" },
@@ -870,6 +882,26 @@ local TABS = {
 			},
 		},
 	},
+	{
+		name = "SETTINGS",
+		sections = {
+			{
+				name = "SETTINGS",
+				items = {
+					{ type = "toggle", label = "Show Keybinds", action = "keybinds" },
+					{ type = "toggle", label = "Show Watermark" },
+				},
+			},
+			{
+				name = "INTERFACE",
+				items = {
+					{ type = "toggle", label = "Compact Sidebar" },
+					{ type = "toggle", label = "Hex Background" },
+					{ type = "button", label = "Reset Layout", style = "accent" },
+				},
+			},
+		},
+	},
 }
 
 --=====================================================================
@@ -893,7 +925,7 @@ local window = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(WINDOW_W, WINDOW_H),
 	Position = UDim2.fromOffset(0, 0),
-	BackgroundColor3 = Theme.Surface,
+	BackgroundColor3 = Theme.Background,
 	BorderSizePixel = 0,
 	Active = true,
 	ZIndex = 2,
@@ -918,7 +950,7 @@ local topbar = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.new(1, 0, 0, TOPBAR_H),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface2,
+	BackgroundColor3 = Theme.Surface,
 	Active = true,
 	ZIndex = 3,
 })
@@ -929,7 +961,7 @@ local topbarPatch = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 14),
 	Position = UDim2.fromOffset(0, TOPBAR_H - 14),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Surface2,
+	BackgroundColor3 = Theme.Surface,
 	ZIndex = 3,
 })
 topbarPatch.Parent = topbar
@@ -970,7 +1002,7 @@ label(topbar, {
 	Text = "PROJECT DELTA",
 	TextSize = 10,
 	Font = FONT,
-	TextColor3 = Theme.TextDim,
+	TextColor3 = Theme.Muted,
 	ZIndex = 4,
 })
 
@@ -1004,6 +1036,8 @@ local sidebar = make("Frame", {
 	Position = UDim2.fromOffset(0, TOPBAR_H),
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
+	-- As abas nunca passam do rodape da sidebar.
+	ClipsDescendants = true,
 	ZIndex = 3,
 })
 sidebar.Parent = window
@@ -1023,7 +1057,7 @@ label(sidebar, {
 	Text = "CATEGORIES",
 	TextSize = 10,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.TextDim,
+	TextColor3 = Theme.Muted,
 	ZIndex = 4,
 })
 
@@ -1040,7 +1074,7 @@ local tabList = make("Frame", {
 tabList.Parent = sidebar
 
 local tabListLayout = make("UIListLayout", {
-	Padding = UDim.new(4, 0),
+	Padding = UDim.new(0, 4),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 })
 tabListLayout.Parent = tabList
@@ -1052,12 +1086,16 @@ local tabListPadding = make("UIPadding", {
 tabListPadding.Parent = tabList
 
 -- Painel de conteudo
+--
+-- O painel e PRETO (8,8,8) e o padrao hexagonal e desenhado por cima
+-- dele (a ImageLabel com ZIndex -2 vive dentro do painel).
 local contentPanel = make("Frame", {
 	Name = randomName(),
 	Size = UDim2.fromOffset(CONTENT_W, CONTENT_H),
 	Position = UDim2.fromOffset(CONTENT_X, CONTENT_Y),
 	BorderSizePixel = 0,
-	BackgroundTransparency = 1,
+	BackgroundColor3 = Theme.Background,
+	BackgroundTransparency = 0,
 	ClipsDescendants = true,
 	ZIndex = 3,
 })
@@ -1067,23 +1105,21 @@ contentPanel.Parent = window
 
 -- Fundo hexagonal do painel de conteudo.
 --
--- O painel e transparente de proposito: um filho com ZIndex negativo e
--- desenhado ATRAS do fundo do pai, so aparece se o pai nao tiver cor.
--- O proprio hex carrega a cor de fundo (8,8,8) e o padrao e a imagem
--- por cima, com 80% de transparencia.
+-- O padrao e uma ImageLabel em mosaico (50x50) com o ZIndex -2: vive
+-- por baixo de todo o conteudo e por cima do fundo preto do painel.
+-- A transparencia e baixa o suficiente para o hexagono se ver.
 local hexLayer = make("ImageLabel", {
 	Name = randomName(),
 	Size = UDim2.fromScale(1, 1),
 	Position = UDim2.fromOffset(0, 0),
 	BorderSizePixel = 0,
-	BackgroundColor3 = Theme.Background,
-	BackgroundTransparency = 0,
+	BackgroundTransparency = 1,
 	Image = "rbxassetid://12629542321",
 	ScaleType = Enum.ScaleType.Tile,
 	TileSize = UDim2.fromOffset(50, 50),
-	ImageColor3 = Color3.fromRGB(45, 45, 45),
-	ImageTransparency = 0.8,
-	ZIndex = -1,
+	ImageColor3 = Color3.fromRGB(85, 85, 85),
+	ImageTransparency = 0.72,
+	ZIndex = -2,
 })
 corner(hexLayer, 10)
 hexLayer.Parent = contentPanel
@@ -1094,8 +1130,8 @@ local scroll = make("ScrollingFrame", {
 	BorderSizePixel = 0,
 	BackgroundTransparency = 1,
 	ScrollBarThickness = 4,
-	ScrollBarImageColor3 = Theme.Accent,
-	ScrollBarImageTransparency = 0.3,
+	ScrollBarImageColor3 = Theme.Muted,
+	ScrollBarImageTransparency = 0.45,
 	ScrollingDirection = Enum.ScrollingDirection.Y,
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	CanvasSize = UDim2.fromOffset(CONTENT_W, 0),
@@ -1115,7 +1151,7 @@ local scrollBody = make("Frame", {
 scrollBody.Parent = scroll
 
 local bodyListLayout = make("UIListLayout", {
-	Padding = UDim.new(16, 0),
+	Padding = UDim.new(0, 16),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 })
 bodyListLayout.Parent = scrollBody
@@ -1139,20 +1175,40 @@ overlay.Parent = contentPanel
 --=====================================================================
 
 local openPanel = nil
+local openList = nil
 local openBurger = nil
 
-local function closeDropdown()
-	if openPanel then
+-- Fecha o submenu (e a lista de opcoes).
+-- keepPanel = true deixa o submenu aberto e so fecha a lista.
+local function closeDropdown(keepPanel)
+	if openPanel and not keepPanel then
 		local panel = openPanel
 		openPanel = nil
 		local animation = tween(panel, { Size = UDim2.fromOffset(panel.Size.X.Offset, 0) }, 0.15)
-		animation.Completed:Once(function()
-			if panel.Parent then
-				panel:Destroy()
-			end
-		end)
+		-- Alguns executores não dão o sinal Completed: nesse caso o
+		-- painel é destruído no frame seguinte.
+		if animation and animation.Completed then
+			animation.Completed:Once(function()
+				if panel.Parent then
+					panel:Destroy()
+				end
+			end)
+		else
+			task.defer(function()
+				if panel.Parent then
+					panel:Destroy()
+				end
+			end)
+		end
 	end
-	if openBurger then
+	if openList then
+		local list = openList
+		openList = nil
+		if list.Parent then
+			list:Destroy()
+		end
+	end
+	if openBurger and not keepPanel then
 		local burger = openBurger
 		openBurger = nil
 		if burger.Parent then
@@ -1270,7 +1326,7 @@ local function buildSlider(parent, spec, order)
 end
 
 -- SubFrame que abre por baixo do cartao, com altura animada
-local function openDropdown(card, burger, sliders, title)
+local function openDropdown(card, burger, sliders, title, dropdowns)
 	if openBurger == burger then
 		closeDropdown()
 		return
@@ -1287,7 +1343,7 @@ local function openDropdown(card, burger, sliders, title)
 		ZIndex = 61,
 	})
 	corner(panel, 10)
-	border(panel, Theme.Accent, 1)
+	border(panel, Theme.Stroke, 1)
 	panel.Parent = overlay
 
 	label(panel, {
@@ -1296,7 +1352,7 @@ local function openDropdown(card, burger, sliders, title)
 		Text = string.upper(title or "OPTIONS"),
 		TextSize = 10,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Accent,
+		TextColor3 = Theme.Muted,
 		ZIndex = 62,
 	})
 
@@ -1304,7 +1360,115 @@ local function openDropdown(card, burger, sliders, title)
 		buildSlider(panel, spec, index)
 	end
 
-	local height = SLIDER_BASE_Y + (#sliders * SLIDER_ROW_H)
+	-- Dropdowns: uma linha com o nome e o valor actual. O valor abre
+	-- uma lista pequena por baixo da linha.
+	local dropdownRows = {}
+	local dropdownTop = SLIDER_BASE_Y + (#sliders * SLIDER_ROW_H)
+	for index, spec in ipairs(dropdowns) do
+		local row = make("Frame", {
+			Size = UDim2.new(1, -24, 0, 30),
+			Position = UDim2.fromOffset(12, dropdownTop + ((index - 1) * 34)),
+			BorderSizePixel = 0,
+			BackgroundTransparency = 1,
+			ZIndex = 62,
+		})
+		row.Parent = panel
+
+		label(row, {
+			Position = UDim2.fromOffset(0, 7),
+			Size = UDim2.new(1, -120, 0, 16),
+			Text = spec.name,
+			TextSize = 11,
+			Font = FONT_MED,
+			TextColor3 = Theme.Text,
+			ZIndex = 63,
+		})
+
+		local value = spec.value or spec.options[1]
+		local valueButton = make("TextButton", {
+			Size = UDim2.fromOffset(110, 22),
+			Position = UDim2.new(1, -110, 0, 4),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Surface,
+			Text = tostring(value),
+			TextSize = 11,
+			Font = FONT_MED,
+			TextColor3 = Theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			AutoButtonColor = false,
+			ZIndex = 63,
+		})
+		corner(valueButton, 7)
+		border(valueButton, Theme.Stroke, 1)
+		valueButton.Parent = row
+
+		label(row, {
+			Position = UDim2.new(1, -24, 0, 9),
+			Size = UDim2.fromOffset(14, 14),
+			Text = "▾",
+			TextSize = 10,
+			Font = FONT_BOLD,
+			TextColor3 = Theme.Muted,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			ZIndex = 63,
+		})
+
+		valueButton.MouseButton1Click:Connect(function()
+			-- A lista abre por cima do submenu (sem ser cortada).
+			if openList then
+				closeDropdown(true)
+				return
+			end
+			local list = make("Frame", {
+				Name = randomName(),
+				Size = UDim2.fromOffset(110, (#spec.options * 24) + 8),
+				BorderSizePixel = 0,
+				BackgroundColor3 = Theme.Surface,
+				ClipsDescendants = true,
+				ZIndex = 90,
+			})
+			corner(list, 8)
+			border(list, Theme.Stroke, 1)
+			list.Parent = overlay
+
+			local origin = row.AbsolutePosition - contentPanel.AbsolutePosition
+			list.Position = UDim2.fromOffset(
+				(origin.X + row.AbsoluteSize.X - 110) / UI_SCALE,
+				(origin.Y + row.AbsoluteSize.Y) / UI_SCALE + 2
+			)
+
+			for optionIndex, option in ipairs(spec.options) do
+				local optionButton = make("TextButton", {
+					Name = randomName(),
+					Size = UDim2.new(1, -16, 0, 22),
+					Position = UDim2.fromOffset(8, 4 + ((optionIndex - 1) * 24)),
+					BorderSizePixel = 0,
+					BackgroundTransparency = 1,
+					Text = tostring(option),
+					TextSize = 11,
+					Font = FONT_MED,
+					TextColor3 = (tostring(option) == tostring(value)) and Theme.Accent or Theme.Text,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					AutoButtonColor = false,
+					ZIndex = 91,
+				})
+				optionButton.Parent = list
+
+				optionButton.MouseButton1Click:Connect(function()
+					value = option
+					valueButton.Text = tostring(option)
+					closeDropdown(true)
+					log(string.format("%s -> %s", spec.name, tostring(option)))
+				end)
+			end
+
+			openList = list
+		end)
+
+		table.insert(dropdownRows, row)
+	end
+
+	local height = dropdownTop + (#dropdowns * 34) + 8
 
 	-- Posicao relativa ao painel de conteudo. O overlay vive dentro do
 	-- contentPanel, por isso basta a diferenca para o painel. As
@@ -1358,7 +1522,14 @@ local function applySwitch(holder, knob, state)
 end
 
 -- CreateToggle: cartao com o icone ☰ a esquerda do texto e o switch
--- a direita. O ☰ abre o submenu.
+-- a direita. O ☰ abre o submenu (accordion) com os sliders e os
+-- dropdowns do item.
+--
+-- As acoes registadas em ACTIONS sao chamadas quando o toggle muda:
+-- e assim que o toggle "Show Keybinds" mostra/esconde o painel dos
+-- atalhos.
+local ACTIONS = {}
+
 local function buildToggleCard(item, order)
 	local state = false
 
@@ -1384,7 +1555,7 @@ local function buildToggleCard(item, order)
 		Text = "☰",
 		TextSize = 15,
 		Font = FONT_BOLD,
-		TextColor3 = item.sliders and Theme.Accent or Theme.TextDim,
+		TextColor3 = (item.sliders or item.dropdowns) and Theme.Accent or Theme.Muted,
 		AutoButtonColor = false,
 		ZIndex = 6,
 	})
@@ -1407,11 +1578,15 @@ local function buildToggleCard(item, order)
 		state = not state
 		applySwitch(holder, knob, state)
 		log(string.format("%s -> %s", item.label, state and "ON" or "OFF"))
+		-- Acao associada ao toggle (ex: "Show Keybinds").
+		if item.action and type(ACTIONS[item.action]) == "function" then
+			ACTIONS[item.action](state)
+		end
 	end
 
 	burger.MouseButton1Click:Connect(function()
-		if item.sliders then
-			openDropdown(card, burger, item.sliders, item.label)
+		if item.sliders or item.dropdowns then
+			openDropdown(card, burger, item.sliders or {}, item.label, item.dropdowns or {})
 		else
 			log(item.label .. ": sem opcoes extras")
 		end
@@ -1561,7 +1736,7 @@ local function buildInputCard(item, order)
 		Text = item.label,
 		TextSize = 11,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.TextDim,
+		TextColor3 = Theme.Muted,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 6,
 	})
@@ -1574,7 +1749,7 @@ local function buildInputCard(item, order)
 		BackgroundColor3 = Theme.Background,
 		Text = "",
 		PlaceholderText = item.placeholder or "...",
-		PlaceholderColor3 = Theme.TextDim,
+		PlaceholderColor3 = Theme.Muted,
 		TextColor3 = Theme.Text,
 		TextSize = 11,
 		Font = FONT,
@@ -1643,7 +1818,7 @@ local function buildSection(sectionData, order)
 	section.Parent = scrollBody
 
 	local sectionLayout = make("UIListLayout", {
-		Padding = UDim.new(10, 0),
+		Padding = UDim.new(0, 10),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	})
 	sectionLayout.Parent = section
@@ -1664,7 +1839,7 @@ local function buildSection(sectionData, order)
 		Text = string.upper(sectionData.name),
 		TextSize = 11,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Accent,
+		TextColor3 = Theme.Text,
 		ZIndex = 6,
 	})
 
@@ -1719,13 +1894,58 @@ end
 local currentTab = 1
 local tabRefs = {}
 
+-- Icone da aba: um quadrado com o "traço" do icone desenhado com formas
+-- (nao ha pack de icones no single file). O desenho muda de aba para
+-- aba, mas o tamanho e a posicao sao sempre os mesmos: e o que mantem
+-- a coluna das abas alinhada.
+local TAB_ICON_SIZE = 16
+local TAB_ICON_X = 8
+local TAB_TEXT_X = 32
+
+local function buildTabIcon(parent, index)
+	local tile = make("Frame", {
+		Name = randomName(),
+		Size = UDim2.fromOffset(TAB_ICON_SIZE, TAB_ICON_SIZE),
+		Position = UDim2.new(0, TAB_ICON_X, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Surface2,
+		ZIndex = 6,
+	})
+	corner(tile, 5)
+	tile.Parent = parent
+
+	-- 1 a 3 riscos, consoante a aba.
+	local marks = { 1, 2, 3, 2, 1, 3 }
+	local count = marks[((index - 1) % #marks) + 1]
+	local parts = {}
+	for i = 1, count do
+		local line = make("Frame", {
+			Name = randomName(),
+			Size = UDim2.fromOffset(i == 2 and 7 or 9, 1.5),
+			Position = UDim2.new(0, 3.5, 0, 5 + ((i - 1) * 2.6)),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Muted,
+			ZIndex = 7,
+		})
+		corner(line, 1)
+		line.Parent = tile
+		table.insert(parts, line)
+	end
+
+	return parts
+end
+
 local function selectTab(index)
 	currentTab = index
 	for i, ref in ipairs(tabRefs) do
 		local active = (i == index)
 		ref.Button.BackgroundColor3 = active and Theme.Surface2 or Theme.Surface
-		ref.Text.TextColor3 = active and Theme.Accent or Theme.TextDim
+		ref.Text.TextColor3 = active and Theme.Accent or Theme.Muted
 		ref.Indicator.Visible = active
+		for _, part in ipairs(ref.Icon or {}) do
+			tween(part, { BackgroundColor3 = active and Theme.Accent or Theme.Muted }, 0.15)
+		end
 	end
 end
 
@@ -1768,13 +1988,17 @@ for index, tabData in ipairs(TABS) do
 	corner(indicator, 2)
 	indicator.Parent = button
 
+	local icon = buildTabIcon(button, index)
+
 	local text = label(button, {
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -18, 1, 0),
+		Position = UDim2.fromOffset(TAB_TEXT_X, 0),
+		Size = UDim2.new(1, -(TAB_TEXT_X + 8), 1, 0),
 		Text = tabData.name,
 		TextSize = 12,
 		Font = FONT_MED,
-		TextColor3 = Theme.TextDim,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
 		ZIndex = 6,
 	})
 
@@ -1799,7 +2023,7 @@ for index, tabData in ipairs(TABS) do
 		end
 	end)
 
-	tabRefs[index] = { Button = button, Indicator = indicator, Text = text }
+	tabRefs[index] = { Button = button, Indicator = indicator, Text = text, Icon = icon }
 end
 
 -- Rodape da sidebar
@@ -1809,7 +2033,7 @@ label(sidebar, {
 	Text = "v1.0.0 • SINGLE FILE",
 	TextSize = 9,
 	Font = FONT,
-	TextColor3 = Theme.TextDim,
+	TextColor3 = Theme.Muted,
 	ZIndex = 4,
 })
 
@@ -1861,7 +2085,7 @@ local avatarInitial = make("TextLabel", {
 	Text = string.sub(string.upper(LocalPlayer.Name), 1, 1),
 	TextSize = 20,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.TextDim,
+	TextColor3 = Theme.Muted,
 	TextXAlignment = Enum.TextXAlignment.Center,
 	ZIndex = 6,
 })
@@ -1896,7 +2120,7 @@ label(profile, {
 	Text = "@" .. LocalPlayer.Name,
 	TextSize = 10,
 	Font = FONT,
-	TextColor3 = Theme.TextDim,
+	TextColor3 = Theme.Muted,
 	TextTruncate = Enum.TextTruncate.AtEnd,
 	ZIndex = 5,
 })
@@ -1922,20 +2146,24 @@ makeDraggable(profile, profile)
 
 --=====================================================================
 -- PAINEL DE KEYBINDS (SUPERIOR DIREITO)
+--
+-- O painel NAO aparece flutuando no ecra: nasce ESCONDIDO e so aparece
+-- quando o toggle "Show Keybinds" (aba SETTINGS) esta ligado. A lista
+-- e informativa: nenhuma tecla e lida aqui.
 --=====================================================================
 
 local KEYBINDS = {
-	{ key = "RShift", action = "Abrir / fechar o menu" },
-	{ key = "LAlt", action = "Recolher a sidebar" },
-	{ key = "Equals", action = "Mostrar inventario" },
-	{ key = "G", action = "Fast trade" },
-	{ key = "X", action = "Panic mode" },
-	{ key = "Z", action = "Ordenar vault" },
-	{ key = "C", action = "Copiar server ID" },
-	{ key = "B", action = "Alternar fundo" },
-	{ key = "J", action = "Join notify" },
-	{ key = "MB3", action = "Clique do meio" },
-	{ key = "U", action = "Descarregar a interface" },
+	{ key = "RShift", action = "UI" },
+	{ key = "LAlt", action = "Cursor" },
+	{ key = "Equals", action = "Auto Run" },
+	{ key = "G", action = "Fly" },
+	{ key = "X", action = "Third Person" },
+	{ key = "Z", action = "Zoom" },
+	{ key = "C", action = "Lock" },
+	{ key = "B", action = "Activation" },
+	{ key = "J", action = "Aim Parts" },
+	{ key = "MB3", action = "Add Friend" },
+	{ key = "U", action = "Underground" },
 }
 
 local KEY_W = 250
@@ -1949,6 +2177,9 @@ local keyPanel = make("Frame", {
 	BorderSizePixel = 0,
 	BackgroundColor3 = Theme.Surface2,
 	Active = true,
+	-- Escondido: so aparece com o toggle "Show Keybinds" da aba
+	-- SETTINGS (a acao "keybinds" abaixo).
+	Visible = false,
 	ZIndex = 4,
 })
 corner(keyPanel, 12)
@@ -1979,7 +2210,7 @@ label(keyHeader, {
 	Text = "KEYBINDS",
 	TextSize = 11,
 	Font = FONT_BOLD,
-	TextColor3 = Theme.Accent,
+	TextColor3 = Theme.Text,
 	ZIndex = 6,
 })
 
@@ -2012,7 +2243,7 @@ for index, entry in ipairs(KEYBINDS) do
 		Text = entry.key,
 		TextSize = 9,
 		Font = FONT_BOLD,
-		TextColor3 = Theme.Accent,
+		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 6,
 	})
@@ -2025,13 +2256,19 @@ for index, entry in ipairs(KEYBINDS) do
 		Text = entry.action,
 		TextSize = 10,
 		Font = FONT,
-		TextColor3 = Theme.TextDim,
+		TextColor3 = Theme.Muted,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 6,
 	})
 end
 
 makeDraggable(keyPanel, keyHeader)
+
+-- O toggle "Show Keybinds" da aba SETTINGS liga/desliga o painel.
+ACTIONS.keybinds = function(state)
+	keyPanel.Visible = state == true
+	log("Keybinds: " .. (keyPanel.Visible and "visiveis" or "escondidos"))
+end
 
 --=====================================================================
 -- BOTAO FLUTUANTE (REABRIR O MENU)
